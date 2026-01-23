@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Select, 
   Button, 
@@ -25,50 +25,294 @@ import {
   ClockCircleOutlined,
   DatabaseOutlined,
   BuildOutlined,
-  CopyOutlined
+  CopyOutlined,
+  LoadingOutlined,
+  LinkOutlined,
+  CloseOutlined
 } from '@ant-design/icons';
+import { getModelProviders } from '../services/api';
+import type { ModelProvider, ChatMessage } from '../services/api';
 
 const { Text, Title, Paragraph } = Typography;
 const { TextArea } = Input;
+
+interface ExtendedChatMessage extends ChatMessage {
+  time?: string;
+  model?: string;
+  meta?: {
+    ttft: string;
+    tokens: number;
+    inputTokens?: number;
+    outputTokens?: number;
+    totalTokens?: number;
+    time: string;
+    requestId?: string;
+  };
+  reasoning?: string;
+  reasoningCollapsed?: boolean;
+  thinking?: boolean;
+}
 
 const ModelPlayground: React.FC = () => {
   const [prompt, setPrompt] = useState('');
   const [isSystemModalOpen, setIsSystemModalOpen] = useState(false);
   const [systemPrompt, setSystemPrompt] = useState('You are a helpful AI assistant.');
-  const [messages, setMessages] = useState<any[]>([
-    {
-      role: 'user',
-      content: '请帮我写一段 Python 代码，用于计算斐波那契数列的前 10 个数字。',
-      time: '14:20:05'
-    },
-    {
-      role: 'assistant',
-      model: 'DeepSeek-V3',
-      content: `当然！这是一个使用 Python 编写的简单代码：
+  const [messages, setMessages] = useState<ExtendedChatMessage[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  
+  // Model Settings State
+  const [providers, setProviders] = useState<ModelProvider[]>([]);
+  const [selectedProviderId, setSelectedProviderId] = useState<string>('');
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
+  const [selectedModel, setSelectedModel] = useState<string>('');
+  
+  // Hyperparameters
+  const [temperature, setTemperature] = useState(0.7);
+  const [topP, setTopP] = useState(1.0);
+  const [maxTokens, setMaxTokens] = useState(2048);
+  const [customParams, setCustomParams] = useState('{\n  "frequency_penalty": 0,\n  "presence_penalty": 0\n}');
+  const [isJsonValid, setIsJsonValid] = useState(true);
+  
+  const chatEndRef = useRef<HTMLDivElement>(null);
 
-def fibonacci(n):
-    sequence = [0, 1]
-    while len(sequence) < n:
-        sequence.append(sequence[-1] + sequence[-2])
-    return sequence[:n]
-print(fibonacci(10))
-
-这段代码会输出：[0, 1, 1, 2, 3, 5, 8, 13, 21, 34]。`,
-      meta: {
-        ttft: '184ms',
-        tokens: 152,
-        time: '1.2s',
-        sessionId: 'sess_8f7a29...9a2'
-      },
-      thinking: false
-    },
-    {
-      role: 'assistant',
-      model: 'DeepSeek-V3',
-      content: '',
-      thinking: true
+  const fetchConfig = async () => {
+    try {
+        const res = await getModelProviders();
+        if (res.code === 200 && Array.isArray(res.data)) {
+            const activeProviders = res.data.filter((p: ModelProvider) => p.status === 0);
+            setProviders(activeProviders);
+            if (activeProviders.length > 0) {
+                const first = activeProviders[0];
+                setSelectedProviderId(first.id);
+                const models = first.models ? JSON.parse(first.models) : [];
+                setAvailableModels(models);
+                if (models.length > 0) setSelectedModel(models[0]);
+            }
+        }
+    } catch (e) {
+        message.error("Failed to load providers");
     }
-  ]);
+  };
+
+  useEffect(() => {
+    fetchConfig();
+  }, []);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  const handleProviderChange = (value: string) => {
+    setSelectedProviderId(value);
+    const provider = providers.find(p => p.id === value);
+    if (provider) {
+        const models = provider.models ? JSON.parse(provider.models) : [];
+        setAvailableModels(models);
+        if (models.length > 0) setSelectedModel(models[0]);
+        else setSelectedModel('');
+    }
+  };
+
+  const handleJsonChange = (value: string) => {
+    setCustomParams(value);
+    try {
+        if (!value.trim()) {
+            setIsJsonValid(true);
+            return;
+        }
+        JSON.parse(value);
+        setIsJsonValid(true);
+    } catch (e) {
+        setIsJsonValid(false);
+    }
+  };
+
+  const formatJson = () => {
+    try {
+        const parsed = JSON.parse(customParams);
+        setCustomParams(JSON.stringify(parsed, null, 2));
+        setIsJsonValid(true);
+    } catch (e) {
+        message.error("JSON 格式错误，无法格式化");
+    }
+  };
+
+  const handleSendMessage = async () => {
+    if (!prompt.trim() || isLoading) return;
+    
+    const userMsg: ExtendedChatMessage = {
+        role: 'user',
+        content: prompt,
+        time: new Date().toLocaleTimeString()
+    };
+    
+    setMessages(prev => [...prev, userMsg]);
+    setPrompt('');
+    setIsLoading(true);
+
+    const assistantMsg: ExtendedChatMessage = {
+        role: 'assistant',
+        model: selectedModel,
+        content: '',
+        thinking: true
+    };
+    setMessages(prev => [...prev, assistantMsg]);
+
+    try {
+        const startTime = Date.now();
+        const chatHistory = messages.map(m => ({ role: m.role, content: m.content }));
+        
+        const payloadMessages: ChatMessage[] = [];
+        if (systemPrompt) payloadMessages.push({ role: 'system', content: systemPrompt });
+        payloadMessages.push(...chatHistory, { role: 'user', content: prompt });
+
+        let extraParams = {};
+        try {
+            if (customParams.trim()) {
+                extraParams = JSON.parse(customParams);
+            }
+        } catch (e) {
+            console.error("Invalid custom params JSON", e);
+        }
+
+        const response = await fetch('http://localhost:8088/api/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Provider-Id': selectedProviderId
+            },
+            body: JSON.stringify({
+                model: selectedModel,
+                messages: payloadMessages,
+                temperature,
+                top_p: topP,
+                max_tokens: maxTokens,
+                stream: true,
+                ...extraParams
+            })
+        });
+
+        if (!response.ok) throw new Error('API request failed');
+
+        const headerRequestId = response.headers.get('X-Request-Id') || response.headers.get('Request-Id');
+        const reader = response.body?.getReader();
+        const decoder = new TextDecoder();
+        let fullContent = '';
+        let fullReasoning = '';
+        let ttft = 0;
+        let finalRequestId = headerRequestId || '';
+        let usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number } | null = null;
+
+        // 初始设置 requestId 到 meta
+        setMessages(prev => {
+            const last = [...prev];
+            last[last.length - 1] = {
+                ...last[last.length - 1],
+                meta: {
+                    ttft: '-',
+                    tokens: 0,
+                    time: '-',
+                    requestId: finalRequestId || undefined
+                }
+            };
+            return last;
+        });
+
+        if (reader) {
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                
+                if (ttft === 0) ttft = Date.now() - startTime;
+
+                const chunk = decoder.decode(value, { stream: true });
+                const lines = chunk.split('\n');
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        const dataStr = line.slice(6).trim();
+                        if (dataStr === '[DONE]') continue;
+                        try {
+                            const data = JSON.parse(dataStr);
+                            const delta = data.choices?.[0]?.delta;
+                            const content = delta?.content || '';
+                            const reasoning = delta?.reasoning_content || '';
+                            const chunkId = data.id; // 获取 chunk 中的 ID
+                            if (chunkId) finalRequestId = chunkId;
+
+                            // 获取 Usage 统计信息（某些厂商会在最后一个 chunk 返回）
+                            if (data.usage) {
+                                usage = data.usage;
+                            }
+                            
+                            const prevContentLength = fullContent.length;
+                            fullContent += content;
+                            fullReasoning += reasoning;
+                            
+                            // 逻辑：如果正文内容开始出现（从空变有），则自动折叠思考过程
+                            const shouldCollapse = prevContentLength === 0 && fullContent.length > 0;
+
+                            setMessages(prev => {
+                                const last = [...prev];
+                                const currentMsg = last[last.length - 1];
+                                last[last.length - 1] = {
+                                    ...currentMsg,
+                                    content: fullContent,
+                                    reasoning: fullReasoning,
+                                    reasoningCollapsed: shouldCollapse ? true : currentMsg.reasoningCollapsed,
+                                    thinking: false,
+                                    meta: {
+                                        ...currentMsg.meta,
+                                        requestId: finalRequestId || currentMsg.meta?.requestId,
+                                        inputTokens: usage?.prompt_tokens,
+                                        outputTokens: usage?.completion_tokens,
+                                        totalTokens: usage?.total_tokens,
+                                        tokens: usage?.total_tokens || Math.ceil((fullContent.length + fullReasoning.length) / 4)
+                                    } as any
+                                };
+                                return last;
+                            });
+                        } catch (e) {
+                        }
+                    }
+                }
+            }
+        }
+
+        const endTime = Date.now();
+        setMessages(prev => {
+            const last = [...prev];
+            const currentMsg = last[last.length - 1];
+            last[last.length - 1] = {
+                ...currentMsg,
+                meta: {
+                    ttft: `${ttft}ms`,
+                    inputTokens: usage?.prompt_tokens,
+                    outputTokens: usage?.completion_tokens,
+                    totalTokens: usage?.total_tokens,
+                    tokens: usage?.total_tokens || Math.ceil((fullContent.length + fullReasoning.length) / 4),
+                    time: `${((endTime - startTime) / 1000).toFixed(1)}s`,
+                    requestId: finalRequestId || currentMsg.meta?.requestId
+                }
+            };
+            return last;
+        });
+
+    } catch (e) {
+        console.error(e);
+        message.error("Failed to get response from AI");
+        setMessages(prev => {
+            const last = [...prev];
+            last[last.length - 1] = {
+                ...last[last.length - 1],
+                content: '请求出错，请检查后台配置或网络连接。',
+                thinking: false
+            };
+            return last;
+        });
+    } finally {
+        setIsLoading(false);
+    }
+  };
 
   return (
     <div className="flex h-[calc(100vh-64px-48px)] -m-8 overflow-hidden bg-[#101922]">
@@ -85,24 +329,21 @@ print(fibonacci(10))
             <div>
               <div className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">厂商</div>
               <Select 
-                defaultValue="deepseek" 
+                value={selectedProviderId}
+                onChange={handleProviderChange}
                 className="w-full"
-                options={[
-                  { value: 'deepseek', label: 'DeepSeek' },
-                  { value: 'openai', label: 'OpenAI' },
-                  { value: 'anthropic', label: 'Anthropic' },
-                ]}
+                options={providers.map(p => ({ value: p.id, label: p.name }))}
+                placeholder="选择厂商"
               />
             </div>
             <div>
               <div className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">模型</div>
               <Select 
-                defaultValue="deepseek-chat" 
+                value={selectedModel}
+                onChange={setSelectedModel}
                 className="w-full"
-                options={[
-                  { value: 'deepseek-chat', label: 'deepseek-chat (V3)' },
-                  { value: 'deepseek-coder', label: 'deepseek-coder' },
-                ]}
+                options={availableModels.map(m => ({ value: m, label: m }))}
+                placeholder="选择模型"
               />
             </div>
           </div>
@@ -119,49 +360,75 @@ print(fibonacci(10))
             <div>
               <div className="flex justify-between mb-1">
                 <span className="text-slate-400 text-xs">Temperature (温度)</span>
-                <span className="text-primary text-xs font-mono">0.7</span>
+                <span className="text-primary text-xs font-mono">{temperature}</span>
               </div>
-              <Slider defaultValue={70} tooltip={{ open: false }} className="m-0" />
+              <Slider 
+                min={0} max={2} step={0.1} 
+                value={temperature} 
+                onChange={setTemperature}
+                tooltip={{ open: false }} className="m-0" 
+              />
             </div>
 
             <div>
               <div className="flex justify-between mb-1">
                 <span className="text-slate-400 text-xs">Top P (核采样)</span>
-                <span className="text-primary text-xs font-mono">1.0</span>
+                <span className="text-primary text-xs font-mono">{topP}</span>
               </div>
-              <Slider defaultValue={100} tooltip={{ open: false }} className="m-0" />
+              <Slider 
+                min={0} max={1} step={0.05} 
+                value={topP} 
+                onChange={setTopP}
+                tooltip={{ open: false }} className="m-0" 
+              />
             </div>
 
             <div>
               <div className="flex justify-between mb-1">
                 <span className="text-slate-400 text-xs">Max Tokens (最大长度)</span>
-                <span className="text-slate-400 bg-[#1a2632] px-1.5 rounded text-[10px] font-mono border border-[#334155]">4096</span>
+                <span className="text-slate-400 bg-[#1a2632] px-1.5 rounded text-[10px] font-mono border border-[#334155]">{maxTokens}</span>
               </div>
-              <Slider defaultValue={40} tooltip={{ open: false }} className="m-0" />
+              <Slider 
+                min={1} max={8192} step={1}
+                value={maxTokens}
+                onChange={setMaxTokens}
+                tooltip={{ open: false }} className="m-0" 
+              />
             </div>
 
-            <div>
-              <div className="flex justify-between mb-1">
-                <span className="text-slate-400 text-xs">频率惩罚</span>
-                <span className="text-primary text-xs font-mono">0.0</span>
+            <div className="h-px bg-[#233648] my-4"></div>
+
+            {/* Custom JSON Params */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <CodeOutlined className="text-primary text-xs" />
+                  <span className="text-white font-bold text-xs uppercase tracking-wider">自定义参数 (JSON)</span>
+                </div>
+                <Button 
+                  type="text" 
+                  size="small" 
+                  className="text-primary text-[10px] p-0 h-auto hover:bg-transparent"
+                  onClick={formatJson}
+                >
+                  格式化
+                </Button>
               </div>
-              <Slider defaultValue={0} tooltip={{ open: false }} className="m-0" />
+              <TextArea
+                value={customParams}
+                onChange={(e) => handleJsonChange(e.target.value)}
+                placeholder='{ "key": "value" }'
+                autoSize={{ minRows: 4, maxRows: 12 }}
+                className={`bg-[#111a22] border-[#233648] text-white font-mono text-xs focus:border-primary/50 hover:border-primary/30 transition-colors ${!isJsonValid ? 'border-red-500 focus:border-red-500' : ''}`}
+                style={{ padding: '8px' }}
+              />
+              {!isJsonValid && (
+                <div className="text-red-500 text-[10px] flex items-center gap-1">
+                  <CloseOutlined className="text-[10px]" />
+                  <span>无效的 JSON 格式</span>
+                </div>
+              )}
             </div>
-          </div>
-
-          <div className="h-px bg-[#233648]"></div>
-
-          {/* Custom JSON */}
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-               <CodeOutlined className="text-slate-400" />
-               <span className="text-slate-400 text-xs">自定义 JSON 参数</span>
-            </div>
-            <TextArea 
-              rows={4} 
-              className="bg-[#0d1117] border-[#233648] text-slate-300 font-mono text-xs"
-              defaultValue={`{"presence_penalty": 0.0, ...}`}
-            />
           </div>
         </div>
       </div>
@@ -183,7 +450,12 @@ print(fibonacci(10))
               </Button>
             </Tooltip>
           </div>
-          <Button type="text" icon={<DeleteOutlined />} className="text-slate-400 hover:text-white">
+          <Button 
+            type="text" 
+            icon={<DeleteOutlined />} 
+            className="text-slate-400 hover:text-white"
+            onClick={() => setMessages([])}
+          >
             清除历史
           </Button>
         </div>
@@ -197,7 +469,6 @@ print(fibonacci(10))
              </div>
           )}
           
-          {/* System Prompt Display Badge (Optional, to show it's active) */}
           {systemPrompt && (
             <div className="flex justify-center">
                 <Tooltip title={systemPrompt}>
@@ -230,40 +501,82 @@ print(fibonacci(10))
                 }`}>
                   {msg.thinking ? (
                     <div className="flex items-center gap-2 text-slate-400 italic">
+                      <LoadingOutlined />
                       <span>正在思考中...</span>
                     </div>
                   ) : (
-                    <>
-                      {msg.role === 'assistant' ? (
-                        <div className="whitespace-pre-wrap font-mono text-xs">
-                          {/* Simplified code rendering simulation */}
-                          {msg.content.split('```').map((part: string, i: number) => {
-                            if (i % 2 === 1) {
-                              // Code block
-                              return (
-                                <div key={i} className="my-2 bg-[#111a22] border border-[#233648] rounded p-3 text-green-400 overflow-x-auto">
-                                  {part}
+                    <div className="space-y-3">
+                        {msg.reasoning && (
+                            <div className="bg-[#111a22] border-l-2 border-primary/40 mb-3 rounded-r-lg overflow-hidden transition-all">
+                                <div 
+                                    className="bg-[#1a2632] px-3 py-1.5 flex justify-between items-center cursor-pointer hover:bg-[#233648] transition-colors"
+                                    onClick={() => {
+                                        setMessages(prev => {
+                                            const next = [...prev];
+                                            const idx = prev.findIndex(m => m === msg);
+                                            if (idx !== -1) {
+                                                next[idx] = { ...next[idx], reasoningCollapsed: !next[idx].reasoningCollapsed };
+                                            }
+                                            return next;
+                                        });
+                                    }}
+                                >
+                                    <div className="text-primary/60 text-[10px] font-bold uppercase tracking-widest flex items-center gap-2">
+                                        <ThunderboltFilled className="text-[10px]" />
+                                        <span>Thinking Process</span>
+                                    </div>
+                                    <div className="text-slate-500 text-[10px] flex items-center gap-1">
+                                        {msg.reasoningCollapsed ? '展开' : '折叠'}
+                                    </div>
                                 </div>
-                              );
-                            }
-                            return <span key={i}>{part}</span>;
-                          })}
+                                {!msg.reasoningCollapsed && (
+                                    <div className="p-3 text-slate-400 font-mono text-xs whitespace-pre-wrap italic animate-in fade-in slide-in-from-top-1 duration-200">
+                                        {msg.reasoning}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                        <div className="whitespace-pre-wrap font-mono text-xs">
+                            {msg.content}
                         </div>
-                      ) : (
-                        msg.content
-                      )}
-                    </>
+                    </div>
                   )}
                 </div>
 
                 {msg.meta && (
-                  <div className="flex items-center gap-4 mt-2 ml-1">
-                    <Tooltip title="Time To First Token">
-                      <div className="flex items-center gap-1.5 text-[10px] text-slate-500 bg-[#1a2632]/50 px-2 py-0.5 rounded border border-[#233648]/50">
-                        <ThunderboltFilled className="text-green-500" />
-                        <span>TTFT: <span className="text-green-400 font-mono">{msg.meta.ttft}</span></span>
-                      </div>
-                    </Tooltip>
+                  <div className="flex flex-wrap items-center gap-y-2 gap-x-4 mt-2 ml-1">
+                    {msg.meta.requestId && (
+                        <Tooltip title={`Request ID: ${msg.meta.requestId}`}>
+                            <div className="flex items-center gap-1.5 text-[10px] text-slate-500 bg-[#1a2632]/50 px-2 py-0.5 rounded border border-[#233648]/50 cursor-help">
+                                <LinkOutlined className="text-slate-400" />
+                                <span>ID: <span className="text-slate-400 font-mono">{msg.meta.requestId.slice(0, 8)}...</span></span>
+                            </div>
+                        </Tooltip>
+                    )}
+                    
+                    {msg.meta.ttft && msg.meta.ttft !== '-' && (
+                        <Tooltip title="Time To First Token">
+                            <div className="flex items-center gap-1.5 text-[10px] text-slate-500 bg-[#1a2632]/50 px-2 py-0.5 rounded border border-[#233648]/50">
+                                <ThunderboltFilled className="text-green-500" />
+                                <span>TTFT: <span className="text-green-400 font-mono">{msg.meta.ttft}</span></span>
+                            </div>
+                        </Tooltip>
+                    )}
+
+                    {msg.meta.inputTokens !== undefined && (
+                        <div className="flex items-center gap-1.5 text-[10px] text-slate-500 bg-[#1a2632]/50 px-2 py-0.5 rounded border border-[#233648]/50">
+                            <span className="text-slate-400">Input:</span>
+                            <span className="text-blue-400 font-mono">{msg.meta.inputTokens}</span>
+                        </div>
+                    )}
+                    
+                    {msg.meta.outputTokens !== undefined && (
+                        <div className="flex items-center gap-1.5 text-[10px] text-slate-500 bg-[#1a2632]/50 px-2 py-0.5 rounded border border-[#233648]/50">
+                            <span className="text-slate-400">Output:</span>
+                            <span className="text-green-400 font-mono">{msg.meta.outputTokens}</span>
+                        </div>
+                    )}
+
                     <div className="flex items-center gap-1.5 text-[10px] text-slate-500 bg-[#1a2632]/50 px-2 py-0.5 rounded border border-[#233648]/50">
                       <DatabaseOutlined className="text-slate-400" />
                       <span>Tokens: <span className="text-green-400 font-mono">{msg.meta.tokens}</span></span>
@@ -272,19 +585,6 @@ print(fibonacci(10))
                       <ClockCircleOutlined className="text-slate-400" />
                       <span>耗时: <span className="text-green-400 font-mono">{msg.meta.time}</span></span>
                     </div>
-                    {msg.meta.sessionId && (
-                        <div 
-                            className="flex items-center gap-1.5 text-[10px] text-slate-500 bg-[#1a2632]/50 px-2 py-0.5 rounded border border-[#233648]/50 cursor-pointer hover:bg-[#1a2632] hover:text-slate-400 transition-colors group"
-                            onClick={() => {
-                                navigator.clipboard.writeText(msg.meta.sessionId);
-                                message.success('Session ID 已复制');
-                            }}
-                            title="点击复制 Session ID"
-                        >
-                            <span className="text-slate-300 font-mono">id: {msg.meta.sessionId}</span>
-                            <CopyOutlined className="opacity-0 group-hover:opacity-100 transition-opacity text-xs" />
-                        </div>
-                    )}
                   </div>
                 )}
                 
@@ -294,6 +594,7 @@ print(fibonacci(10))
               </div>
             </div>
           ))}
+          <div ref={chatEndRef} />
         </div>
 
         {/* Input Area */}
@@ -302,6 +603,11 @@ print(fibonacci(10))
             <TextArea 
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
+              onPressEnter={(e) => {
+                if (e.shiftKey) return;
+                e.preventDefault();
+                handleSendMessage();
+              }}
               placeholder="输入 Prompt 进行测试..."
               autoSize={{ minRows: 3, maxRows: 8 }}
               className="bg-transparent border-none text-white placeholder-slate-500 focus:ring-0 resize-none p-4 text-sm"
@@ -312,11 +618,13 @@ print(fibonacci(10))
                 <Button type="text" icon={<CodeOutlined />} className="text-slate-400 hover:text-white text-xs">变量模板</Button>
               </div>
               <div className="flex items-center gap-3">
-                <span className="text-[10px] text-slate-500 hidden sm:inline-block">使用 Cmd + Enter 快速发送</span>
+                <span className="text-[10px] text-slate-500 hidden sm:inline-block">使用 Enter 发送</span>
                 <Button 
                   type="primary" 
-                  icon={<SendOutlined />} 
+                  icon={isLoading ? <LoadingOutlined /> : <SendOutlined />} 
                   className="bg-primary hover:bg-blue-600 border-none shadow-lg shadow-blue-900/20"
+                  onClick={handleSendMessage}
+                  disabled={isLoading}
                 />
               </div>
             </div>

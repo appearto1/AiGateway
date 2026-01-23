@@ -6,10 +6,10 @@ import {
   Switch, 
   Button, 
   Tag, 
-  Typography, 
   Form, 
-  Divider,
   Modal,
+  Tooltip,
+  Popover,
   ConfigProvider,
   theme,
   message
@@ -20,8 +20,6 @@ import {
   ReloadOutlined, 
   DeleteOutlined, 
   HistoryOutlined, 
-  EyeInvisibleOutlined,
-  EyeOutlined,
   CloudServerOutlined,
   SafetyCertificateOutlined,
   DashboardOutlined,
@@ -36,11 +34,21 @@ import {
   SettingOutlined,
   LinkOutlined,
   LockOutlined,
-  CloseOutlined
+  CloseOutlined, 
+  LoadingOutlined,
+  ExclamationCircleOutlined
 } from '@ant-design/icons';
 import StatusCard from '../components/StatusCard';
+import { 
+    getModelProviders, 
+    createModelProvider, 
+    updateModelProvider, 
+    deleteModelProvider,
+    testProviderConnection
+} from '../services/api';
+import type { ModelProvider as APIModelProvider } from '../services/api';
 
-// Mock Data
+// Mock Stats Data (Keep this mocked or fetch from another endpoint if available)
 const statsData = [
   {
     title: '活跃厂商',
@@ -76,119 +84,150 @@ const statsData = [
   }
 ];
 
-// Predefined models for selection
-const COMMON_MODELS = [
-  'gpt-4o', 'gpt-4-turbo', 'gpt-3.5-turbo',
-  'claude-3-5-sonnet', 'claude-3-opus', 'claude-3-haiku',
-  'deepseek-chat', 'deepseek-coder',
-  'gemini-1.5-pro', 'gemini-1.5-flash',
-  'llama-3-70b', 'llama-3-8b',
-  'mistral-large', 'mixtral-8x7b'
-];
-
 interface Vendor {
   id: string;
   name: string;
   icon: React.ReactNode;
-  status: 'active' | 'error' | 'disabled';
+  status: 0 | 1 | 2; // 0:正常, 1:异常, 2:禁用
   latency?: string;
   successRate?: string;
   errorRate?: string;
+  todayTokens?: number;
+  totalTokens?: number;
   description?: string;
   models: string[];
   baseUrl: string;
   apiKey: string;
   iconBg: string;
+  rawIcon?: string; // Store raw icon string for update
 }
 
-const initialVendors: Vendor[] = [
-  {
-    id: 'deepseek',
-    name: 'DeepSeek',
-    icon: <div className="size-full bg-blue-500 rounded-lg"></div>,
-    status: 'active',
-    latency: '45ms',
-    successRate: '99.9%',
-    description: 'dpsk-v2-prod',
-    models: ['deepseek-chat', 'deepseek-coder'],
-    baseUrl: 'https://api.deepseek.com/v1',
-    apiKey: 'sk-xxxxxxxxxxxxxxxx',
-    iconBg: 'bg-blue-500'
-  },
-  {
-    id: 'openai',
-    name: 'OpenAI',
-    icon: <GlobalOutlined style={{ fontSize: '24px', color: 'white' }} />,
-    status: 'active',
-    latency: '230ms',
-    successRate: '99.5%',
-    models: ['gpt-4o', 'gpt-3.5-turbo'],
-    baseUrl: 'https://api.openai.com/v1',
-    apiKey: 'sk-proj-xxxxxxxx',
-    iconBg: 'bg-black'
-  },
-  {
-    id: 'anthropic',
-    name: 'Anthropic',
-    icon: <ApiOutlined style={{ fontSize: '24px', color: 'white' }} />,
-    status: 'active',
-    latency: '156ms',
-    successRate: '99.8%',
-    models: ['claude-3-5-sonnet', 'claude-3-opus'],
-    baseUrl: 'https://api.anthropic.com/v1',
-    apiKey: 'sk-ant-xxxxxxxx',
-    iconBg: 'bg-orange-600'
-  },
-  {
-    id: 'ollama',
-    name: 'Local Ollama',
-    icon: <CodeOutlined style={{ fontSize: '24px', color: 'black' }} />,
-    status: 'error',
-    latency: '--',
-    errorRate: '100%',
-    models: ['llama3', 'mistral'],
-    baseUrl: 'http://localhost:11434',
-    apiKey: '',
-    iconBg: 'bg-white'
-  },
-  {
-    id: 'azure',
-    name: 'Azure OpenAI',
-    icon: <WindowsOutlined style={{ fontSize: '24px', color: 'white' }} />,
-    status: 'disabled',
-    latency: '-',
-    successRate: '-',
-    models: ['gpt-4', 'gpt-35-turbo'],
-    baseUrl: 'https://my-resource.openai.azure.com',
-    apiKey: 'xxxxxxxx',
-    iconBg: 'bg-blue-800'
-  }
+const getIcon = (name: string, bgClass?: string) => {
+    const style = { fontSize: '20px', color: 'white' };
+    const blackStyle = { fontSize: '20px', color: 'black' };
+    
+    // 规范化名称
+    const n = name?.toLowerCase() || '';
+    
+    // 常用厂商预设图标
+    if (n.includes('openai')) return <GlobalOutlined style={style} />;
+    if (n.includes('anthropic')) return <ApiOutlined style={style} />;
+    if (n.includes('ollama')) return <CodeOutlined style={blackStyle} />;
+    if (n.includes('azure')) return <WindowsOutlined style={style} />;
+    
+    // 默认生成文字头像
+    const firstChar = (name || '?').charAt(0).toUpperCase();
+    return (
+        <span className="text-white font-bold text-lg select-none tracking-tighter">
+            {firstChar}
+        </span>
+    );
+};
+
+const COLORS = [
+  { name: '蓝色', class: 'bg-blue-500' },
+  { name: '靛蓝', class: 'bg-indigo-500' },
+  { name: '紫色', class: 'bg-purple-500' },
+  { name: '粉色', class: 'bg-pink-500' },
+  { name: '橙色', class: 'bg-orange-500' },
+  { name: '琥珀', class: 'bg-amber-500' },
+  { name: '翠绿', class: 'bg-emerald-500' },
+  { name: '青色', class: 'bg-cyan-500' },
+  { name: '灰色', class: 'bg-slate-500' },
 ];
 
 const ModelProviders: React.FC = () => {
   const navigate = useNavigate();
-  const [vendors] = useState<Vendor[]>(initialVendors);
-  const [selectedVendorId, setSelectedVendorId] = useState<string>('deepseek');
+  const [modal, contextHolder] = Modal.useModal();
+  const [vendors, setVendors] = useState<Vendor[]>([]);
+  const [selectedVendorId, setSelectedVendorId] = useState<string>('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<'add' | 'edit'>('edit');
+  const [isTesting, setIsTesting] = useState(false);
+  
+  // 搜索和过滤状态
+  const [searchText, setSearchText] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string | number>('all');
+  
+  const [selectedColor, setSelectedColor] = useState('bg-blue-500');
+  const [isColorPickerOpen, setIsColorPickerOpen] = useState(false);
   
   // Tag State
   const [editingModels, setEditingModels] = useState<string[]>([]);
   const [isAddingTag, setIsAddingTag] = useState(false);
-  const selectRef = useRef<any>(null);
+  
+  // Form
+  const [form] = Form.useForm();
 
-  const selectedVendor = vendors.find(v => v.id === selectedVendorId) || vendors[0];
+  const fetchVendors = async (name?: string, status?: any) => {
+    try {
+        console.log("Fetching vendors with:", { name, status });
+        const res = await getModelProviders(name, status === 'all' ? undefined : status);
+        if (res.code === 200 && Array.isArray(res.data)) {
+            const data: APIModelProvider[] = res.data;
+            const mapped: Vendor[] = data.map(p => {
+                const name = p.name || 'Unknown';
+                // 根据名字生成稳定的背景色
+                const colors = [
+                    'bg-blue-500', 'bg-indigo-500', 'bg-purple-500', 
+                    'bg-pink-500', 'bg-rose-500', 'bg-orange-500', 
+                    'bg-amber-500', 'bg-emerald-500', 'bg-teal-500', 'bg-cyan-500'
+                ];
+                const colorIdx = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % colors.length;
+                const dynamicBg = p.icon_bg || colors[colorIdx];
 
-  // Initialize editing state when opening modal
+                return {
+                    id: p.id,
+                    name: name,
+                    status: p.status as any,
+                    description: p.description,
+                    latency: p.latency,
+                    successRate: p.success_rate,
+                    errorRate: p.error_rate,
+                    todayTokens: p.today_tokens,
+                    totalTokens: p.total_tokens,
+                    baseUrl: p.base_url,
+                    apiKey: p.api_key,
+                    iconBg: dynamicBg,
+                    models: p.models ? JSON.parse(p.models) : [],
+                    icon: getIcon(name, dynamicBg),
+                    rawIcon: p.icon
+                };
+            });
+            setVendors(mapped);
+        }
+    } catch (e) {
+        console.error(e);
+        message.error("Failed to fetch vendors");
+    }
+  };
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+        fetchVendors(searchText, statusFilter);
+    }, 200); // 将防抖时间从 500ms 降低到 200ms
+    return () => clearTimeout(timer);
+  }, [searchText, statusFilter]);
+
+  const selectedVendor = vendors.find(v => v.id === selectedVendorId);
+
   useEffect(() => {
     if (isModalOpen) {
-      if (modalMode === 'edit') {
+      if (modalMode === 'edit' && selectedVendor) {
         setEditingModels(selectedVendor.models);
+        setSelectedColor(selectedVendor.iconBg || 'bg-blue-500');
+        form.setFieldsValue({
+            name: selectedVendor.name,
+            baseUrl: selectedVendor.baseUrl,
+            apiKey: selectedVendor.apiKey,
+        });
       } else {
         setEditingModels([]);
+        setSelectedColor('bg-blue-500');
+        form.resetFields();
       }
     }
-  }, [isModalOpen, modalMode, selectedVendor]);
+  }, [isModalOpen, modalMode, selectedVendor, form]);
 
   const handleEditClick = (vendorId: string) => {
       setSelectedVendorId(vendorId);
@@ -197,6 +236,7 @@ const ModelProviders: React.FC = () => {
   };
 
   const handleAddClick = () => {
+      setSelectedVendorId('');
       setModalMode('add');
       setIsModalOpen(true);
   };
@@ -204,7 +244,119 @@ const ModelProviders: React.FC = () => {
   const handleModalClose = () => {
       setIsModalOpen(false);
       setIsAddingTag(false);
+      form.resetFields();
   };
+
+  const handleSave = async () => {
+      try {
+          const values = await form.validateFields();
+          const payload: Partial<APIModelProvider> = {
+              name: values.name,
+              base_url: values.baseUrl,
+              api_key: values.apiKey,
+              models: JSON.stringify(editingModels),
+              icon: modalMode === 'edit' ? selectedVendor?.rawIcon || values.name : values.name, // Simple default
+              icon_bg: selectedColor,
+              status: modalMode === 'add' ? 0 : selectedVendor?.status,
+          };
+
+          if (modalMode === 'add') {
+              const res = await createModelProvider(payload);
+              if (res.code === 200) {
+                  message.success("Created successfully");
+                  fetchVendors(searchText, statusFilter);
+                  handleModalClose();
+              } else {
+                  message.error(res.msg || "Creation failed");
+              }
+          } else {
+              const res = await updateModelProvider({ ...payload, id: selectedVendorId });
+              if (res.code === 200) {
+                  message.success("Updated successfully");
+                  fetchVendors(searchText, statusFilter);
+                  handleModalClose();
+              } else {
+                  message.error(res.msg || "Update failed");
+              }
+          }
+      } catch (e) {
+          console.error(e);
+      }
+  };
+
+  const handleTest = async () => {
+    try {
+        const values = await form.getFieldsValue(['baseUrl', 'apiKey']);
+        if (!values.baseUrl) {
+            message.warning("请先填写 BASE URL");
+            return;
+        }
+        setIsTesting(true);
+        const res = await testProviderConnection(values.baseUrl, values.apiKey, true);
+        if (res.code === 200) {
+            message.success("连接成功！接口响应正常");
+        } else {
+            message.error(res.msg || "连接测试失败");
+        }
+    } catch (e) {
+        message.error("请求失败，请检查后端服务");
+    } finally {
+        setIsTesting(false);
+    }
+  };
+
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
+  const [isFetchingModels, setIsFetchingModels] = useState(false);
+
+  const handleStartAddTag = async () => {
+    const values = await form.getFieldsValue(['baseUrl', 'apiKey']);
+    if (values.baseUrl && values.apiKey) {
+        setIsFetchingModels(true);
+        try {
+            const res = await testProviderConnection(values.baseUrl, values.apiKey, false);
+            if (res.code === 200 && Array.isArray(res.models)) {
+                setAvailableModels(res.models);
+            } else {
+                setAvailableModels([]);
+            }
+        } catch (e) {
+            setAvailableModels([]);
+        } finally {
+            setIsFetchingModels(false);
+        }
+    } else {
+        setAvailableModels([]);
+    }
+    setIsAddingTag(true);
+  };
+  
+  const handleDelete = async () => {
+      if (!selectedVendorId) return;
+
+      modal.confirm({
+          title: '确认删除',
+          icon: <ExclamationCircleOutlined className="text-red-500" />,
+          content: `确定要删除厂商 "${selectedVendor?.name}" 吗？此操作不可撤销。`,
+          okText: '确认删除',
+          okType: 'danger',
+          cancelText: '取消',
+          centered: true,
+          onOk: async () => {
+              try {
+                  const res = await deleteModelProvider(selectedVendorId);
+                  if (res.code === 200) {
+                      message.success("删除成功");
+                      fetchVendors(searchText, statusFilter);
+                      handleModalClose();
+                  } else {
+                      message.error(res.msg || "删除失败");
+                  }
+              } catch (e) {
+                  message.error("删除失败");
+              }
+          },
+      });
+  }
 
   // Tag Handlers
   const handleRemoveTag = (removedTag: string) => {
@@ -219,7 +371,39 @@ const ModelProviders: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <ConfigProvider
+      theme={{
+          algorithm: theme.darkAlgorithm,
+          token: {
+              colorBgElevated: '#1a2632',
+              colorBorder: '#233648',
+              borderRadiusLG: 12,
+          },
+          components: {
+              Modal: {
+                  headerBg: '#1a2632',
+                  contentBg: '#1a2632',
+                  titleColor: 'white',
+              },
+              Input: {
+                  colorBgContainer: '#111a22',
+                  colorBorder: '#233648',
+                  hoverBorderColor: '#137fec',
+                  activeBorderColor: '#137fec',
+                  paddingBlock: 10,
+                  paddingInline: 12,
+              },
+              Select: {
+                  colorBgContainer: '#111a22',
+                  colorBorder: '#233648',
+                  hoverBorderColor: '#137fec',
+                  activeBorderColor: '#137fec',
+              }
+          }
+      }}
+    >
+      {contextHolder}
+      <div className="space-y-6">
       {/* Header Section */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -239,6 +423,7 @@ const ModelProviders: React.FC = () => {
             <Button 
                 icon={<ReloadOutlined />} 
                 className="bg-[#1a2632] border-[#334155] text-slate-300 hover:text-white hover:border-primary"
+                onClick={() => fetchVendors(searchText, statusFilter)}
             >
                 刷新状态
             </Button>
@@ -279,15 +464,18 @@ const ModelProviders: React.FC = () => {
             prefix={<SearchOutlined className="text-slate-500" />}
             placeholder="搜索厂商 (例如: DeepSeek, OpenAI)..."
             className="max-w-md bg-[#1a2632] border-[#334155] text-white placeholder-slate-500 hover:border-primary focus:border-primary"
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
         />
         <Select
-            defaultValue="all"
+            value={statusFilter}
+            onChange={setStatusFilter}
             className="w-32"
             options={[
                 { value: 'all', label: '所有状态' },
-                { value: 'active', label: '运行正常' },
-                { value: 'error', label: '连接异常' },
-                { value: 'disabled', label: '已禁用' },
+                { value: 0, label: '运行正常' },
+                { value: 1, label: '连接异常' },
+                { value: 2, label: '已禁用' },
             ]}
         />
       </div>
@@ -309,49 +497,94 @@ const ModelProviders: React.FC = () => {
                                     <h3 className="text-white font-bold text-base">{vendor.name}</h3>
                                     <div className="flex items-center gap-1.5 mt-0.5">
                                         <span className={`size-1.5 rounded-full ${
-                                            vendor.status === 'active' ? 'bg-green-500' : 
-                                            vendor.status === 'error' ? 'bg-red-500' : 'bg-slate-500'
+                                            vendor.status === 0 ? 'bg-green-500' : 
+                                            vendor.status === 1 ? 'bg-red-500' : 'bg-slate-500'
                                         }`}></span>
                                         <span className={`text-xs ${
-                                            vendor.status === 'active' ? 'text-green-500' : 
-                                            vendor.status === 'error' ? 'text-red-500' : 'text-slate-500'
+                                            vendor.status === 0 ? 'text-green-500' : 
+                                            vendor.status === 1 ? 'text-red-500' : 'text-slate-500'
                                         }`}>
-                                            {vendor.status === 'active' ? '运行正常' : 
-                                            vendor.status === 'error' ? '连接断时' : '已禁用'}
+                                            {vendor.status === 0 ? '运行正常' : 
+                                            vendor.status === 1 ? '连接异常' : '已禁用'}
                                         </span>
                                     </div>
                                 </div>
                             </div>
                             <Switch 
                                 size="small" 
-                                checked={vendor.status !== 'disabled'} 
-                                className={`${vendor.status === 'disabled' ? 'bg-slate-600' : 'bg-primary'}`}
+                                checked={vendor.status !== 2} 
+                                className={`${vendor.status === 2 ? 'bg-slate-600' : 'bg-primary'}`}
+                                onChange={async (checked) => {
+                                    try {
+                                        const res = await updateModelProvider({
+                                            id: vendor.id,
+                                            status: checked ? 0 : 2
+                                        });
+                                        if (res.code === 200) {
+                                            message.success(checked ? "已启用" : "已禁用");
+                                            fetchVendors(searchText, statusFilter);
+                                        } else {
+                                            message.error(res.msg || "操作失败");
+                                        }
+                                    } catch (e) {
+                                        message.error("操作失败");
+                                    }
+                                }}
                             />
                         </div>
 
-                        <div className="grid grid-cols-2 gap-3 mb-4">
+                        <div className="grid grid-cols-2 gap-3 mb-2">
                             <div className="bg-[#111a22] rounded p-2.5 border border-[#233648]">
                                 <p className="text-slate-500 text-xs mb-0.5">当前延迟</p>
                                 <div className="flex items-center text-slate-200 font-mono text-sm">
-                                    <ThunderboltOutlined className="text-yellow-500 mr-1.5 text-xs" />
-                                    {vendor.latency}
+                                    <ThunderboltOutlined className={`mr-1.5 text-xs ${
+                                        (() => {
+                                            if (!vendor.latency || vendor.latency === '--' || vendor.latency === '-') return 'text-slate-500';
+                                            const val = parseInt(vendor.latency);
+                                            if (val < 100) return 'text-[#22c55e]'; // 深绿色 (Green 500)
+                                            if (val < 200) return 'text-green-400'; // 绿色 (Green 400)
+                                            return 'text-yellow-500'; // 黄色
+                                        })()
+                                    }`} />
+                                    <span className={
+                                        (() => {
+                                            if (!vendor.latency || vendor.latency === '--' || vendor.latency === '-') return 'text-slate-400';
+                                            const val = parseInt(vendor.latency);
+                                            if (val < 100) return 'text-[#22c55e]'; 
+                                            if (val < 200) return 'text-green-400';
+                                            return 'text-yellow-500';
+                                        })()
+                                    }>
+                                        {vendor.latency || '--'}
+                                    </span>
                                 </div>
                             </div>
                             <div className="bg-[#111a22] rounded p-2.5 border border-[#233648]">
                                 <p className="text-slate-500 text-xs mb-0.5">
-                                    {vendor.status === 'error' ? '错误率' : '成功率'}
+                                    {vendor.status === 1 ? '错误率' : '成功率'}
                                 </p>
-                                <div className={`font-mono text-sm ${vendor.status === 'error' ? 'text-red-400' : 'text-slate-200'}`}>
-                                    {vendor.status === 'error' ? vendor.errorRate : vendor.successRate}
+                                <div className={`font-mono text-sm ${vendor.status === 1 ? 'text-red-400' : 'text-slate-200'}`}>
+                                    {vendor.status === 1 ? (vendor.errorRate || '--') : (vendor.successRate || '--')}
                                 </div>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3 text-[10px] text-slate-500 font-mono mb-1 px-0.5">
+                            <div className="flex items-center gap-1">
+                                <span className="text-slate-600 uppercase">Today Tokens:</span>
+                                <span className="text-slate-400">{vendor.todayTokens?.toLocaleString() || '0'}</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                                <span className="text-slate-600 uppercase">Total Tokens:</span>
+                                <span className="text-slate-400">{vendor.totalTokens?.toLocaleString() || '0'}</span>
                             </div>
                         </div>
                     </div>
 
-                    <div className="flex justify-between items-center pt-2 border-t border-[#233648] mt-2">
-                        {vendor.description ? (
-                             <span className="text-xs text-slate-500 font-mono">ID: {vendor.description}</span>
-                        ) : <span></span>}
+                    <div className="flex justify-between items-center pt-2 border-t border-[#233648] mt-1">
+                        <span className="text-[10px] text-slate-600 font-mono truncate max-w-[150px]" title={vendor.id}>
+                            ID: {vendor.id}
+                        </span>
                         <Button 
                             type="text" 
                             size="small"
@@ -364,41 +597,10 @@ const ModelProviders: React.FC = () => {
                 </div>
             ))}
       </div>
+    </div>
 
-      {/* Modal Section */}
-      <ConfigProvider
-        theme={{
-            algorithm: theme.darkAlgorithm,
-            token: {
-                colorBgElevated: '#1a2632',
-                colorBorder: '#233648',
-                borderRadiusLG: 12,
-            },
-            components: {
-                Modal: {
-                    headerBg: '#1a2632',
-                    contentBg: '#1a2632',
-                    titleColor: 'white',
-                },
-                Input: {
-                    colorBgContainer: '#111a22',
-                    colorBorder: '#233648',
-                    hoverBorderColor: '#137fec',
-                    activeBorderColor: '#137fec',
-                    paddingBlock: 10,
-                    paddingInline: 12,
-                },
-                Select: {
-                    colorBgContainer: '#111a22',
-                    colorBorder: '#233648',
-                    hoverBorderColor: '#137fec',
-                    activeBorderColor: '#137fec',
-                }
-            }
-        }}
-      >
-        <Modal
-            open={isModalOpen}
+    <Modal
+        open={isModalOpen}
             onCancel={handleModalClose}
             footer={null}
             width={480}
@@ -426,49 +628,79 @@ const ModelProviders: React.FC = () => {
                             type="text" 
                             icon={<DeleteOutlined className="text-lg" />} 
                             className="text-slate-400 hover:text-red-400 flex items-center justify-center w-8 h-8"
+                            onClick={handleDelete}
                         />
                     </div>
                 </div>
             }
         >
             <div className="p-6">
-                <Form layout="vertical" className="space-y-5">
-                    <Form.Item label={<span className="text-slate-400 text-xs font-bold uppercase tracking-wider">显示名称</span>} className="mb-0">
-                        <Input 
-                            placeholder="例如: OpenAI, DeepSeek..."
-                            defaultValue={modalMode === 'edit' ? selectedVendor?.name : ''} 
-                            className="text-white text-sm"
-                        />
-                    </Form.Item>
+                <Form form={form} layout="vertical" className="space-y-5">
+                    <div className="flex gap-4">
+                        <Form.Item name="name" label={<span className="text-slate-400 text-xs font-bold uppercase tracking-wider">显示名称</span>} className="mb-0 flex-1" rules={[{ required: true }]}>
+                            <Input 
+                                placeholder="例如: OpenAI, DeepSeek..."
+                                className="text-white text-sm"
+                            />
+                        </Form.Item>
+                        <Form.Item label={<span className="text-slate-400 text-xs font-bold uppercase tracking-wider">标识颜色</span>} className="mb-0">
+                            <Popover
+                                open={isColorPickerOpen}
+                                onOpenChange={setIsColorPickerOpen}
+                                trigger="click"
+                                placement="bottomRight"
+                                overlayClassName="color-picker-popover"
+                                content={
+                                    <div className="grid grid-cols-5 gap-2 p-2">
+                                        {COLORS.map(color => (
+                                            <Tooltip title={color.name} key={color.class}>
+                                                <div 
+                                                    className={`size-7 rounded-md cursor-pointer transition-all ${color.class} ${selectedColor === color.class ? 'ring-2 ring-white ring-offset-2 ring-offset-[#1a2632] scale-110' : 'opacity-80 hover:opacity-100 hover:scale-105'}`}
+                                                    onClick={() => {
+                                                        setSelectedColor(color.class);
+                                                        setIsColorPickerOpen(false);
+                                                    }}
+                                                />
+                                            </Tooltip>
+                                        ))}
+                                    </div>
+                                }
+                            >
+                                <div className="flex items-center justify-center size-10 bg-[#111a22] border border-[#233648] rounded-lg cursor-pointer hover:border-primary transition-colors group">
+                                    <div className={`size-6 rounded-md shadow-sm ${selectedColor} group-hover:scale-110 transition-transform`} />
+                                </div>
+                            </Popover>
+                        </Form.Item>
+                    </div>
                     
-                    <Form.Item label={<span className="text-slate-400 text-xs font-bold uppercase tracking-wider">BASE URL</span>} className="mb-0">
+                    <Form.Item name="baseUrl" label={<span className="text-slate-400 text-xs font-bold uppercase tracking-wider">BASE URL</span>} className="mb-0">
                         <Input 
                             prefix={<LinkOutlined className="text-slate-500 mr-2" />}
                             placeholder="https://api.example.com/v1"
-                            defaultValue={modalMode === 'edit' ? selectedVendor?.baseUrl : ''} 
                             className="text-white font-mono text-xs"
                         />
                     </Form.Item>
 
-                    <Form.Item label={<span className="text-slate-400 text-xs font-bold uppercase tracking-wider">API KEY</span>} className="mb-0">
-                        <div className="relative">
-                            <Input.Password 
-                                prefix={<KeyOutlined className="text-slate-500 mr-2" />}
-                                placeholder="输入 API 密钥..."
-                                defaultValue={modalMode === 'edit' ? selectedVendor?.apiKey : ''} 
-                                iconRender={(visible) => (
-                                    <span className="text-primary text-xs font-medium cursor-pointer hover:text-blue-400 select-none">
-                                        {visible ? '隐藏' : '显示'}
-                                    </span>
-                                )}
-                                className="text-white font-mono text-xs pr-12"
-                            />
-                        </div>
-                        <div className="flex items-center gap-1.5 mt-2 text-slate-500 text-[11px]">
-                            <LockOutlined className="text-slate-500" />
-                            密钥已加密存储
-                        </div>
+                    <Form.Item 
+                        name="apiKey" 
+                        label={<span className="text-slate-400 text-xs font-bold uppercase tracking-wider">API KEY</span>} 
+                        className="mb-0"
+                    >
+                        <Input.Password 
+                            prefix={<KeyOutlined className="text-slate-500 mr-2" />}
+                            placeholder="输入 API 密钥..."
+                            iconRender={(visible) => (
+                                <span className="text-primary text-xs font-medium cursor-pointer hover:text-blue-400 select-none">
+                                    {visible ? '隐藏' : '显示'}
+                                </span>
+                            )}
+                            className="text-white font-mono text-xs pr-12"
+                        />
                     </Form.Item>
+                    <div className="flex items-center gap-1.5 mt-1 text-slate-500 text-[11px]">
+                        <LockOutlined className="text-slate-500" />
+                        密钥已加密存储
+                    </div>
 
                     <Form.Item label={<span className="text-slate-400 text-xs font-bold uppercase tracking-wider">可用模型</span>} className="mb-0">
                         <div className="flex flex-wrap gap-2">
@@ -488,7 +720,8 @@ const ModelProviders: React.FC = () => {
                                     showSearch
                                     autoFocus
                                     defaultOpen
-                                    placeholder="输入或选择模型"
+                                    loading={isFetchingModels}
+                                    placeholder={isFetchingModels ? "正在拉取模型..." : "输入或选择模型"}
                                     className="min-w-[140px]"
                                     size="small"
                                     onSelect={handleAddTag}
@@ -500,12 +733,12 @@ const ModelProviders: React.FC = () => {
                                             if (val) handleAddTag(val);
                                         }
                                     }}
-                                    options={COMMON_MODELS.filter(m => !editingModels.includes(m)).map(m => ({ label: m, value: m }))}
+                                    options={availableModels.filter(m => !editingModels.includes(m)).map(m => ({ label: m, value: m }))}
                                     dropdownStyle={{ backgroundColor: '#1a2632', border: '1px solid #233648' }}
                                 />
                             ) : (
                                 <Tag 
-                                    onClick={() => setIsAddingTag(true)}
+                                    onClick={handleStartAddTag}
                                     className="bg-transparent border-primary/30 text-primary border-dashed cursor-pointer hover:bg-primary/10 hover:border-primary px-3 py-1.5 rounded-md flex items-center gap-1 text-sm transition-colors"
                                 >
                                     <PlusOutlined className="text-xs" /> 添加
@@ -517,14 +750,16 @@ const ModelProviders: React.FC = () => {
                     <div className="grid grid-cols-2 gap-4 pt-4 border-t border-[#233648] mt-2">
                         <Button 
                             className="bg-[#1a2632] border-[#334155] text-slate-200 hover:text-white hover:border-slate-400 w-full h-11 text-sm font-medium rounded-lg"
-                            icon={<ApiOutlined />}
+                            icon={isTesting ? <LoadingOutlined /> : <ApiOutlined />}
+                            onClick={handleTest}
+                            disabled={isTesting}
                         >
-                            测试连接
+                            {isTesting ? '测试中...' : '测试连接'}
                         </Button>
                         <Button 
                             type="primary" 
                             className="w-full h-11 text-sm font-bold rounded-lg shadow-lg shadow-blue-900/20" 
-                            onClick={handleModalClose}
+                            onClick={handleSave}
                         >
                             {modalMode === 'add' ? '创建配置' : '保存配置'}
                         </Button>
@@ -532,8 +767,7 @@ const ModelProviders: React.FC = () => {
                 </Form>
             </div>
         </Modal>
-      </ConfigProvider>
-    </div>
+    </ConfigProvider>
   );
 };
 

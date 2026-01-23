@@ -15,6 +15,7 @@
     "@tailwindcss/postcss": "^4.1.18",
     "antd": "^6.2.1",
     "autoprefixer": "^10.4.23",
+    "axios": "^1.13.2",
     "postcss": "^8.5.6",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
