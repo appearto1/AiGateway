@@ -180,3 +180,83 @@ export const deleteApp = async (id: string) => {
     const response = await axios.post(`${API_BASE_URL}/app/delete`, { id });
     return response.data;
 };
+
+// 应用使用统计相关接口
+export interface AppUsageStatsByModel {
+    model: string;
+    provider_name: string;
+    request_count: number;
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+    success_count: number;
+    error_count: number;
+}
+
+export interface AppUsageStatsByApp {
+    app_id: string;
+    app_name: string;
+    request_count: number;
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+    success_count: number;
+    error_count: number;
+}
+
+export interface AppUsageLogItem {
+    id: string;
+    app_id: string;
+    app_name: string;
+    model: string;
+    provider_name: string;
+    request_id: string;
+    status: number;
+    status_message: string;
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+    request_time: string;
+}
+
+export interface AppUsageLogsResponse {
+    list: AppUsageLogItem[];
+    total: number;
+    page: number;
+    page_size: number;
+}
+
+export interface AppUsageStatsParams {
+    app_id?: string;
+    model?: string;
+    start_time?: string;
+    end_time?: string;
+    page?: number;
+    page_size?: number;
+}
+
+// 按模型统计应用使用情况
+export const getAppUsageStatsByModel = async (params?: AppUsageStatsParams) => {
+    const response = await axios.get(`${API_BASE_URL}/app/usage_stats/by_model`, { params });
+    return response.data;
+};
+
+// 按应用统计使用情况
+export const getAppUsageStatsByApp = async (params?: AppUsageStatsParams) => {
+    const response = await axios.get(`${API_BASE_URL}/app/usage_stats/by_app`, { params });
+    return response.data;
+};
+
+// 获取应用使用记录列表
+export const getAppUsageLogs = async (params?: AppUsageStatsParams) => {
+    const response = await axios.get(`${API_BASE_URL}/app/usage_stats/logs`, { params });
+    return response.data;
+};
+
+// 获取指定应用的模型使用统计
+export const getAppModelStats = async (appId: string, params?: Omit<AppUsageStatsParams, 'app_id'>) => {
+    const response = await axios.get(`${API_BASE_URL}/app/usage_stats/model_stats`, { 
+        params: { ...params, app_id: appId } 
+    });
+    return response.data;
+};

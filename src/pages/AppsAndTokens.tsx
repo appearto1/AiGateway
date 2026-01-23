@@ -18,7 +18,8 @@ import {
   Checkbox,
   message,
   Popconfirm,
-  InputNumber
+  InputNumber,
+  DatePicker
 } from 'antd';
 import { 
   SearchOutlined, 
@@ -40,10 +41,12 @@ import {
   CloudFilled,
   GlobalOutlined,
   CodeOutlined,
-  DeleteOutlined
+  DeleteOutlined,
+  BarChartOutlined
 } from '@ant-design/icons';
-import { getApps, createApp, updateApp, rotateAppSecret, deleteApp, getModelProviders } from '../services/api';
-import type { AppData, ModelProvider } from '../services/api';
+import { getApps, createApp, updateApp, rotateAppSecret, deleteApp, getModelProviders, getAppModelStats } from '../services/api';
+import type { AppData, ModelProvider, AppUsageStatsByModel } from '../services/api';
+import dayjs, { type Dayjs } from 'dayjs';
 
 const { Text, Title } = Typography;
 const { TextArea } = Input;
@@ -58,6 +61,15 @@ const AppsAndTokens: React.FC = () => {
   const [modelProviders, setModelProviders] = useState<ModelProvider[]>([]);
   const [form] = Form.useForm();
   const [messageApi, contextHolder] = message.useMessage();
+  const [statsModalOpen, setStatsModalOpen] = useState(false);
+  const [statsLoading, setStatsLoading] = useState(false);
+  const [currentAppId, setCurrentAppId] = useState<string>('');
+  const [currentAppName, setCurrentAppName] = useState<string>('');
+  const [modelStats, setModelStats] = useState<AppUsageStatsByModel[]>([]);
+  const [statsDateRange, setStatsDateRange] = useState<[Dayjs, Dayjs]>([
+    dayjs().subtract(6, 'day'), // 7天前（包含今天共7天）
+    dayjs() // 今天
+  ]);
 
   // Combine models from all active providers
   const allAvailableModels = modelProviders.reduce((acc: any[], provider) => {
@@ -370,6 +382,14 @@ const AppsAndTokens: React.FC = () => {
                 <Button type="text" icon={<KeyOutlined className="text-slate-400 hover:text-white" />} size="small" />
             </Popconfirm>
           </Tooltip>
+          <Tooltip title="查看统计">
+            <Button 
+                type="text" 
+                icon={<BarChartOutlined className="text-slate-400 hover:text-primary" />} 
+                size="small" 
+                onClick={() => handleViewStats(record.id, record.name)}
+            />
+          </Tooltip>
            <Tooltip title="删除">
             <Popconfirm title="确定要删除此应用吗？" onConfirm={() => handleDelete(record.id)}>
                 <Button type="text" icon={<DeleteOutlined className="text-slate-400 hover:text-red-400" />} size="small" />
@@ -379,6 +399,58 @@ const AppsAndTokens: React.FC = () => {
       ),
     },
   ];
+
+  const handleViewStats = async (appId: string, appName: string) => {
+    setCurrentAppId(appId);
+    setCurrentAppName(appName);
+    // 重置为最近7天
+    const defaultRange: [Dayjs, Dayjs] = [
+      dayjs().subtract(6, 'day'),
+      dayjs()
+    ];
+    setStatsDateRange(defaultRange);
+    setStatsModalOpen(true);
+    await fetchStatsData(appId, defaultRange);
+  };
+
+  const fetchStatsData = async (appId: string, dateRange: [Dayjs, Dayjs]) => {
+    setStatsLoading(true);
+    try {
+      // 计算日期范围的开始和结束时间
+      const startTime = dateRange[0].startOf('day').format('YYYY-MM-DD HH:mm:ss');
+      const endTime = dateRange[1].endOf('day').format('YYYY-MM-DD HH:mm:ss');
+      
+      const res = await getAppModelStats(appId, {
+        start_time: startTime,
+        end_time: endTime
+      });
+      if (res.code === 200) {
+        setModelStats(res.data || []);
+      } else {
+        messageApi.error(res.msg || '获取统计信息失败');
+      }
+    } catch (error) {
+      console.error(error);
+      messageApi.error('获取统计信息失败');
+    } finally {
+      setStatsLoading(false);
+    }
+  };
+
+  const handleStatsDateRangeChange = (dates: [Dayjs | null, Dayjs | null] | null) => {
+    if (dates && dates[0] && dates[1]) {
+      // 检查日期范围是否超过3个月
+      const daysDiff = dates[1].diff(dates[0], 'day');
+      if (daysDiff > 90) {
+        messageApi.warning('日期范围不能超过3个月（90天）');
+        return;
+      }
+      const range: [Dayjs, Dayjs] = [dates[0], dates[1]];
+      setStatsDateRange(range);
+      fetchStatsData(currentAppId, range);
+    }
+  };
+
 
   return (
     <div className="space-y-6">
@@ -653,7 +725,166 @@ const AppsAndTokens: React.FC = () => {
             </div>
         </Modal>
       </ConfigProvider>
-    </div>
+
+      {/* Stats Modal */}
+      <ConfigProvider
+          theme={{
+            algorithm: theme.darkAlgorithm,
+            token: {
+              colorBgElevated: '#1a2632',
+              colorBorder: '#233648',
+              borderRadiusLG: 12,
+            },
+            components: {
+              Modal: {
+                headerBg: '#1a2632',
+                contentBg: '#1a2632',
+                titleColor: 'white',
+                paddingContentHorizontal: 0,
+              },
+              DatePicker: {
+                colorBgContainer: '#111a22',
+                colorBorder: '#233648',
+                hoverBorderColor: '#137fec',
+                activeBorderColor: '#137fec',
+                colorText: '#e2e8f0',
+                colorTextPlaceholder: '#64748b',
+              },
+            },
+          }}
+        >
+          <Modal
+            title={
+              <div className="flex items-center gap-2">
+                <BarChartOutlined className="text-primary" />
+                <span>应用使用统计 - {currentAppName}</span>
+              </div>
+            }
+            open={statsModalOpen}
+            onCancel={() => setStatsModalOpen(false)}
+            footer={null}
+            width={900}
+            className="stats-modal"
+          >
+            <div className="space-y-4">
+              <div className="flex items-center justify-between mb-4">
+                <div className="text-slate-400 text-sm">
+                  统计该应用使用的模型及其 Token 使用情况
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-400 text-sm">查询日期范围：</span>
+                  <DatePicker.RangePicker
+                    value={statsDateRange}
+                    onChange={handleStatsDateRangeChange}
+                    format="YYYY-MM-DD"
+                    allowClear={false}
+                    className="w-64"
+                  />
+                </div>
+              </div>
+            
+            {statsLoading ? (
+              <div className="text-center py-8 text-slate-400">加载中...</div>
+            ) : modelStats.length === 0 ? (
+              <div className="text-center py-8 text-slate-400">暂无统计数据</div>
+            ) : (
+              <ConfigProvider
+                theme={{
+                  algorithm: theme.darkAlgorithm,
+                  components: {
+                    Table: {
+                      headerBg: 'transparent',
+                      headerColor: '#94a3b8',
+                      headerSplitColor: 'transparent',
+                      colorBgContainer: 'transparent',
+                      borderColor: '#233648',
+                      rowHoverBg: 'rgba(255, 255, 255, 0.02)',
+                    }
+                  }
+                }}
+              >
+                <Table
+                  columns={[
+                    {
+                      title: '模型',
+                      dataIndex: 'model',
+                      key: 'model',
+                      render: (text: string) => (
+                        <Text className="text-white font-medium">{text}</Text>
+                      ),
+                    },
+                    {
+                      title: '厂商',
+                      dataIndex: 'provider_name',
+                      key: 'provider_name',
+                      render: (text: string) => (
+                        <Text className="text-slate-400">{text}</Text>
+                      ),
+                    },
+                    {
+                      title: '请求次数',
+                      dataIndex: 'request_count',
+                      key: 'request_count',
+                      align: 'right' as const,
+                      render: (text: number) => (
+                        <Text className="text-slate-300">{text?.toLocaleString() || 0}</Text>
+                      ),
+                    },
+                    {
+                      title: '输入 Tokens',
+                      dataIndex: 'prompt_tokens',
+                      key: 'prompt_tokens',
+                      align: 'right' as const,
+                      render: (text: number) => (
+                        <Text className="text-blue-400 font-mono">{text?.toLocaleString() || 0}</Text>
+                      ),
+                    },
+                    {
+                      title: '输出 Tokens',
+                      dataIndex: 'completion_tokens',
+                      key: 'completion_tokens',
+                      align: 'right' as const,
+                      render: (text: number) => (
+                        <Text className="text-green-400 font-mono">{text?.toLocaleString() || 0}</Text>
+                      ),
+                    },
+                    {
+                      title: '总 Tokens',
+                      dataIndex: 'total_tokens',
+                      key: 'total_tokens',
+                      align: 'right' as const,
+                      render: (text: number) => (
+                        <Text className="text-primary font-mono font-semibold">{text?.toLocaleString() || 0}</Text>
+                      ),
+                    },
+                    {
+                      title: '成功率',
+                      key: 'success_rate',
+                      align: 'right' as const,
+                      render: (_: any, record: AppUsageStatsByModel) => {
+                        const rate = record.request_count > 0 
+                          ? ((record.success_count / record.request_count) * 100).toFixed(1)
+                          : '0.0';
+                        return (
+                          <Text className={parseFloat(rate) >= 95 ? 'text-green-400' : 'text-yellow-400'}>
+                            {rate}%
+                          </Text>
+                        );
+                      },
+                    },
+                  ]}
+                  dataSource={modelStats}
+                  rowKey="model"
+                  pagination={false}
+                  size="small"
+                />
+              </ConfigProvider>
+            )}
+            </div>
+          </Modal>
+        </ConfigProvider>
+      </div>
+  
   );
 };
 
