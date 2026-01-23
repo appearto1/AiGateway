@@ -219,6 +219,35 @@ const AppsAndTokens: React.FC = () => {
       }
   };
 
+  const handleCopy = async (text: string, successMessage: string = '已复制') => {
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+        messageApi.success(successMessage);
+      } else {
+        // Fallback for older browsers or non-secure contexts
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
+        textArea.style.position = "fixed";
+        textArea.style.left = "-9999px";
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        try {
+          document.execCommand('copy');
+          messageApi.success(successMessage);
+        } catch (err) {
+          console.error('Fallback: Oops, unable to copy', err);
+          messageApi.error('复制失败');
+        }
+        document.body.removeChild(textArea);
+      }
+    } catch (err) {
+      console.error('Failed to copy: ', err);
+      messageApi.error('复制失败');
+    }
+  };
+
   const columns = [
     {
       title: '应用名称',
@@ -244,10 +273,7 @@ const AppsAndTokens: React.FC = () => {
         <Tooltip title="点击复制 ID">
             <Text 
                 className="bg-[#111a22] text-slate-400 px-2 py-1 rounded font-mono text-[11px] border border-[#233648] cursor-pointer hover:border-primary/50 transition-colors"
-                onClick={() => {
-                    navigator.clipboard.writeText(text);
-                    messageApi.success('ID 已复制');
-                }}
+                onClick={() => handleCopy(text, 'ID 已复制')}
             >
             {text}
             </Text>
@@ -271,10 +297,7 @@ const AppsAndTokens: React.FC = () => {
                       icon={<ExportOutlined className="text-[10px]" />} 
                       size="small" 
                       className="text-slate-500 hover:text-primary"
-                      onClick={() => {
-                          navigator.clipboard.writeText(fullKey);
-                          messageApi.success('密钥已复制到剪贴板');
-                      }}
+                      onClick={() => handleCopy(fullKey, '密钥已复制到剪贴板')}
                   />
               </Tooltip>
           </div>
