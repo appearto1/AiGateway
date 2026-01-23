@@ -24,14 +24,15 @@ import {
   ThunderboltFilled,
   ClockCircleOutlined,
   DatabaseOutlined,
-  BuildOutlined,
-  CopyOutlined,
-  LoadingOutlined,
-  LinkOutlined,
-  CloseOutlined
+  BuildOutlined, 
+  CopyOutlined, 
+  LoadingOutlined, 
+  LinkOutlined, 
+  CloseOutlined,
+  InfoCircleOutlined,
+  SyncOutlined
 } from '@ant-design/icons';
-import { getModelProviders } from '../services/api';
-import type { ModelProvider, ChatMessage } from '../services/api';
+import type { ChatMessage } from '../services/api';
 
 const { Text, Title, Paragraph } = Typography;
 const { TextArea } = Input;
@@ -59,10 +60,9 @@ const ModelPlayground: React.FC = () => {
   const [systemPrompt, setSystemPrompt] = useState('You are a helpful AI assistant.');
   const [messages, setMessages] = useState<ExtendedChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [appToken, setAppToken] = useState<string>(localStorage.getItem('playground_app_token') || '');
   
   // Model Settings State
-  const [providers, setProviders] = useState<ModelProvider[]>([]);
-  const [selectedProviderId, setSelectedProviderId] = useState<string>('');
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>('');
   
@@ -76,22 +76,44 @@ const ModelPlayground: React.FC = () => {
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   const fetchConfig = async () => {
-    try {
-        const res = await getModelProviders();
-        if (res.code === 200 && Array.isArray(res.data)) {
-            const activeProviders = res.data.filter((p: ModelProvider) => p.status === 0);
-            setProviders(activeProviders);
-            if (activeProviders.length > 0) {
-                const first = activeProviders[0];
-                setSelectedProviderId(first.id);
-                const models = first.models ? JSON.parse(first.models) : [];
-                setAvailableModels(models);
-                if (models.length > 0) setSelectedModel(models[0]);
-            }
-        }
-    } catch (e) {
-        message.error("Failed to load providers");
+    // 优先尝试从 localStorage 获取 token 加载模型
+    if (appToken) {
+        await fetchModelsByToken(appToken);
     }
+  };
+
+  const fetchModelsByToken = async (token: string) => {
+      try {
+          setIsLoading(true);
+          // 使用新的 v1/models 接口获取授权模型
+          const response = await fetch('http://192.168.120.99:8088/api/v1/models', {
+              headers: {
+                  'Authorization': `Bearer ${token}`
+              }
+          });
+          
+          if (!response.ok) {
+              const err = await response.json().catch(() => ({}));
+              throw new Error(err.error || '获取授权模型失败');
+          }
+          
+          const res = await response.json();
+          if (res.data && Array.isArray(res.data)) {
+              const modelList = res.data.map((m: any) => m.id);
+              setAvailableModels(modelList);
+              if (modelList.length > 0 && !modelList.includes(selectedModel)) {
+                  setSelectedModel(modelList[0]);
+              }
+              message.success(`成功加载 ${modelList.length} 个授权模型`);
+              localStorage.setItem('playground_app_token', token);
+          }
+      } catch (e: any) {
+          message.error(e.message || "Token 无效或获取模型失败");
+          setAvailableModels([]);
+          setSelectedModel('');
+      } finally {
+          setIsLoading(false);
+      }
   };
 
   useEffect(() => {
@@ -101,17 +123,6 @@ const ModelPlayground: React.FC = () => {
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
-
-  const handleProviderChange = (value: string) => {
-    setSelectedProviderId(value);
-    const provider = providers.find(p => p.id === value);
-    if (provider) {
-        const models = provider.models ? JSON.parse(provider.models) : [];
-        setAvailableModels(models);
-        if (models.length > 0) setSelectedModel(models[0]);
-        else setSelectedModel('');
-    }
-  };
 
   const handleJsonChange = (value: string) => {
     setCustomParams(value);
@@ -175,11 +186,11 @@ const ModelPlayground: React.FC = () => {
             console.error("Invalid custom params JSON", e);
         }
 
-        const response = await fetch('http://localhost:8088/api/v1/chat/completions', {
+        const response = await fetch('http://192.168.120.99:8088/api/v1/chat/completions', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'X-Provider-Id': selectedProviderId
+                'Authorization': `Bearer ${appToken}`
             },
             body: JSON.stringify({
                 model: selectedModel,
@@ -192,7 +203,10 @@ const ModelPlayground: React.FC = () => {
             })
         });
 
-        if (!response.ok) throw new Error('API request failed');
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || errorData.msg || `请求失败 (${response.status})`);
+        }
 
         const headerRequestId = response.headers.get('X-Request-Id') || response.headers.get('Request-Id');
         const reader = response.body?.getReader();
@@ -297,14 +311,14 @@ const ModelPlayground: React.FC = () => {
             return last;
         });
 
-    } catch (e) {
+    } catch (e: any) {
         console.error(e);
-        message.error("Failed to get response from AI");
+        message.error(e.message || "Failed to get response from AI");
         setMessages(prev => {
             const last = [...prev];
             last[last.length - 1] = {
                 ...last[last.length - 1],
-                content: '请求出错，请检查后台配置或网络连接。',
+                content: e.message || '请求出错，请检查后台配置或网络连接。',
                 thinking: false
             };
             return last;
@@ -324,26 +338,40 @@ const ModelPlayground: React.FC = () => {
         </div>
         
         <div className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar">
-          {/* Model Selection */}
+          {/* Token & Model Selection */}
           <div className="space-y-4">
             <div>
-              <div className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">厂商</div>
-              <Select 
-                value={selectedProviderId}
-                onChange={handleProviderChange}
-                className="w-full"
-                options={providers.map(p => ({ value: p.id, label: p.name }))}
-                placeholder="选择厂商"
-              />
+              <div className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-2 flex justify-between items-center">
+                <span>应用令牌 (App Token)</span>
+                <Tooltip title="输入 appid_secret 格式的令牌以获取授权模型">
+                  <InfoCircleOutlined className="text-slate-500 cursor-help" />
+                </Tooltip>
+              </div>
+              <Space.Compact className="w-full">
+                <Input.Password 
+                  value={appToken}
+                  onChange={(e) => setAppToken(e.target.value)}
+                  placeholder="appid_secret"
+                  className="bg-[#111a22] border-[#233648] text-white"
+                />
+                <Button 
+                    type="primary" 
+                    icon={<SyncOutlined spin={isLoading} />} 
+                    onClick={() => fetchModelsByToken(appToken)}
+                    title="加载模型"
+                />
+              </Space.Compact>
             </div>
+            
             <div>
-              <div className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">模型</div>
+              <div className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">选择模型</div>
               <Select 
                 value={selectedModel}
                 onChange={setSelectedModel}
                 className="w-full"
                 options={availableModels.map(m => ({ value: m, label: m }))}
-                placeholder="选择模型"
+                placeholder={availableModels.length > 0 ? "选择模型" : "请先输入令牌加载模型"}
+                disabled={availableModels.length === 0}
               />
             </div>
           </div>
