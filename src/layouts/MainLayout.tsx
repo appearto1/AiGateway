@@ -1,12 +1,15 @@
 import React from 'react';
 import { Layout, ConfigProvider, theme } from 'antd';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import TopHeader from '../components/TopHeader';
 
 const { Content } = Layout;
 
 const MainLayout: React.FC = () => {
+  const location = useLocation();
+  const isSkillsPage = location.pathname.startsWith('/skills');
+
   return (
     <ConfigProvider
       theme={{
@@ -41,6 +44,11 @@ const MainLayout: React.FC = () => {
             headerBg: '#111a22',
             headerColor: '#94a3b8',
             borderColor: '#233648',
+          },
+          Modal: {
+            contentBg: '#0d1117',
+            headerBg: '#0d1117',
+            titleColor: '#fff',
           }
         }
       }}
@@ -49,8 +57,8 @@ const MainLayout: React.FC = () => {
         <Sidebar />
         <Layout className="bg-background-dark">
           <TopHeader />
-          <Content className="overflow-y-auto p-8 scroll-smooth" id="main-content">
-            <div className="max-w-7xl mx-auto space-y-6">
+          <Content className={`scroll-smooth ${isSkillsPage ? 'p-0 overflow-hidden' : 'p-8 overflow-y-auto'}`} id="main-content">
+            <div className={isSkillsPage ? 'h-full' : 'max-w-7xl mx-auto space-y-6'}>
                 <Outlet />
             </div>
           </Content>

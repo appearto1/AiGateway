@@ -5,6 +5,8 @@ import Dashboard from './pages/Dashboard';
 import ModelProviders from './pages/ModelProviders';
 import AppsAndTokens from './pages/AppsAndTokens';
 import ModelPlayground from './pages/ModelPlayground';
+import KnowledgeBase from './pages/KnowledgeBase';
+import SkillEditor from './pages/SkillEditor';
 import { Empty } from 'antd';
 
 // Placeholder component for other routes
@@ -31,7 +33,8 @@ function App() {
           <Route path="models" element={<ModelProviders />} />
           <Route path="apps" element={<AppsAndTokens />} />
           <Route path="playground" element={<ModelPlayground />} />
-          <Route path="skills" element={<PlaceholderPage title="知识库 (Skills)" />} />
+          <Route path="skills" element={<KnowledgeBase />} />
+          <Route path="skills/:id" element={<SkillEditor />} />
           <Route path="mcp" element={<PlaceholderPage title="MCP 工具集成" />} />
           <Route path="logs" element={<PlaceholderPage title="调用日志" />} />
           <Route path="settings/department" element={<PlaceholderPage title="部门管理" />} />

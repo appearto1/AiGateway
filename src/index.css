@@ -1,26 +1,61 @@
 @import "tailwindcss";
 
-/* Custom scrollbar from code.html */
-::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
-}
-::-webkit-scrollbar-track {
-    background: #101922; 
-}
-::-webkit-scrollbar-thumb {
-    background: #334155; 
-    border-radius: 4px;
-}
-::-webkit-scrollbar-thumb:hover {
-    background: #475569; 
+@theme {
+  --color-primary: #137fec;
+  --color-background-dark: #0d1117;
 }
 
-body {
-    margin: 0;
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-      'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-      sans-serif;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: #30363d;
+  border-radius: 3px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: #58a6ff;
+}
+
+/* Modal Dark Theme Overrides */
+.dark-modal .ant-modal-content {
+  background-color: #0d1117;
+  border: 1px solid #30363d;
+}
+
+.dark-modal .ant-modal-header {
+  background-color: #0d1117;
+  border-bottom: 1px solid #30363d;
+}
+
+.dark-modal .ant-modal-title {
+  color: #e6edf3;
+}
+
+.dark-modal .ant-modal-close {
+  color: #8b949e;
+}
+
+.dark-modal .ant-modal-close:hover {
+  color: #e6edf3;
+  background-color: rgba(177, 186, 196, 0.12);
+}
+
+/* Confirm Modal Specifics */
+.dark-confirm-modal .ant-modal-content {
+  background-color: #161b22 !important; /* Slightly lighter than pure black for confirms */
+  border: 1px solid #30363d !important;
+}
+
+.dark-confirm-modal .ant-modal-confirm-title {
+  color: #e6edf3 !important;
+}
+
+.dark-confirm-modal .ant-modal-confirm-content {
+  color: #8b949e !important;
 }
