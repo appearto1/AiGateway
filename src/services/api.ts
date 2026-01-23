@@ -1,7 +1,17 @@
 import axios from 'axios';
 
-const API_BASE_URL = 'http://192.168.120.99:8088/api/web';
-const OPENAI_BASE_URL = 'http://192.168.120.99:8088/api/v1';
+// 设置 API_BASE_URL（如果还没有设置）
+// @ts-ignore
+if (!window.API_BASE_URL) {
+    // @ts-ignore
+    window.API_BASE_URL = 'http://127.0.0.1:8088/api';
+}
+
+// @ts-ignore
+const BASE_URL = window.API_BASE_URL || 'http://192.168.120.99:8088/api';
+
+export const API_BASE_URL = `${BASE_URL}/web`;
+export const OPENAI_BASE_URL = `${BASE_URL}/v1`;
 
 export interface ModelProvider {
     id: string;
@@ -86,6 +96,42 @@ export const chatCompletions = async (data: ChatCompletionRequest, providerId?: 
         responseType: data.stream ? 'stream' : 'json'
     });
     return response.data;
+};
+
+/**
+ * 流式聊天补全请求
+ * @param data 聊天请求数据
+ * @param token 认证令牌
+ * @param providerId 可选的提供商ID
+ * @returns 返回 Response 对象，用于流式读取
+ */
+export const chatCompletionsStream = async (
+    data: ChatCompletionRequest, 
+    token?: string,
+    providerId?: string
+): Promise<Response> => {
+    const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+    };
+    
+    if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+    }
+    
+    if (providerId) {
+        headers['X-Provider-Id'] = providerId;
+    }
+    
+    const response = await fetch(`${OPENAI_BASE_URL}/chat/completions`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+            ...data,
+            stream: true
+        })
+    });
+    
+    return response;
 };
 
 export interface AppData {

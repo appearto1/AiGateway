@@ -32,7 +32,8 @@ import {
   InfoCircleOutlined,
   SyncOutlined
 } from '@ant-design/icons';
-import type { ChatMessage } from '../services/api';
+import type { ChatMessage, ChatCompletionRequest } from '../services/api';
+import { getOpenAIModels, chatCompletionsStream } from '../services/api';
 
 const { Text, Title, Paragraph } = Typography;
 const { TextArea } = Input;
@@ -85,19 +86,9 @@ const ModelPlayground: React.FC = () => {
   const fetchModelsByToken = async (token: string) => {
       try {
           setIsLoading(true);
-          // 使用新的 v1/models 接口获取授权模型
-          const response = await fetch('http://192.168.120.99:8088/api/v1/models', {
-              headers: {
-                  'Authorization': `Bearer ${token}`
-              }
-          });
+          // 使用 api.ts 中的 getOpenAIModels 函数
+          const res = await getOpenAIModels(token);
           
-          if (!response.ok) {
-              const err = await response.json().catch(() => ({}));
-              throw new Error(err.error || '获取授权模型失败');
-          }
-          
-          const res = await response.json();
           if (res.data && Array.isArray(res.data)) {
               const modelList = res.data.map((m: any) => m.id);
               setAvailableModels(modelList);
@@ -106,6 +97,8 @@ const ModelPlayground: React.FC = () => {
               }
               message.success(`成功加载 ${modelList.length} 个授权模型`);
               localStorage.setItem('playground_app_token', token);
+          } else {
+              throw new Error('获取授权模型失败：响应数据格式错误');
           }
       } catch (e: any) {
           message.error(e.message || "Token 无效或获取模型失败");
@@ -186,22 +179,16 @@ const ModelPlayground: React.FC = () => {
             console.error("Invalid custom params JSON", e);
         }
 
-        const response = await fetch('http://192.168.120.99:8088/api/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${appToken}`
-            },
-            body: JSON.stringify({
-                model: selectedModel,
-                messages: payloadMessages,
-                temperature,
-                top_p: topP,
-                max_tokens: maxTokens,
-                stream: true,
-                ...extraParams
-            })
-        });
+        // 使用 api.ts 中的 chatCompletionsStream 函数
+        const response = await chatCompletionsStream({
+            model: selectedModel,
+            messages: payloadMessages,
+            temperature,
+            top_p: topP,
+            max_tokens: maxTokens,
+            stream: true,
+            ...extraParams
+        } as ChatCompletionRequest, appToken);
 
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
