@@ -26,15 +26,22 @@ import { getOpenAIModels } from '../services/api';
 const { Dragger } = Upload;
 const { TextArea } = Input;
 
+interface SkillFile {
+  id: string;
+  name: string;
+  url: string;
+  storage_name: string;
+}
+
 interface Skill {
   id: string;
   title: string;
   skillId: string;
   description: string;
-  status: 'published' | 'draft' | 'generating';
+  status: 0 | 1 | 2; // 0: creating, 1: published, 2: failed
   type: 'manual' | 'policy' | 'troubleshoot';
   createdAt: string;
-  files?: string;
+  filesList?: SkillFile[]; // Updated from 'files?: string'
 }
 
 interface Library {
@@ -76,16 +83,22 @@ const KnowledgeBase: React.FC = () => {
     }
   };
 
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
   const fetchSkills = async (libId: string) => {
+    if (!libId) return;
+    setIsRefreshing(true);
     try {
         const res = await fetch(`${API_BASE_URL}/kb/skills?libraryId=${libId}`);
         const data = await res.json();
         if (data.code === 200) {
-            setSkills(data.data);
+            setSkills(data.data || []);
         }
     } catch (e) {
         console.error(e);
         message.error('获取技能列表失败');
+    } finally {
+        setIsRefreshing(false);
     }
   }
 
@@ -307,10 +320,6 @@ const KnowledgeBase: React.FC = () => {
             if (data.code === 200) {
                 message.success('知识库已删除');
                 fetchLibraries();
-                // Reset selection if needed, simplified by fetchLibraries updating state? 
-                // We need to wait for fetchLibraries to update libraries before setting selectedLibraryId?
-                // Actually fetchLibraries sets default if none selected.
-                // But we should clear selectedLibraryId first.
                 setSelectedLibraryId('');
             } else {
                 message.error(data.error || '删除失败');
@@ -338,13 +347,13 @@ const KnowledgeBase: React.FC = () => {
   const handleModalSubmit = async () => {
     setIsGenerating(true);
 
-    if (modalMode === 'create') {
-        const filesJson = JSON.stringify(fileList.map(f => ({
-            name: f.name,
-            url: f.response?.url || f.url,
-            storageName: f.response?.storage_name
-        })));
+    const filesJson = JSON.stringify(fileList.map(f => ({
+        name: f.name,
+        url: f.response?.url || f.url,
+        storageName: f.response?.storage_name || f.response?.storageName
+    })));
 
+    if (modalMode === 'create') {
         try {
              const res = await fetch(`${API_BASE_URL}/kb/skill/add`, {
                 method: 'POST',
@@ -354,33 +363,19 @@ const KnowledgeBase: React.FC = () => {
                     title: '正在生成新技能...', 
                     skillId: `skill-${Date.now()}`,
                     description: description,
-                    status: 'generating',
-                    type: 'manual',
-                    files: filesJson
+                    files: filesJson // Backend parses this string
                 })
             });
             const data = await res.json();
             if (data.code === 200) {
-                const skillId = data.data.id;
-                
-                 setTimeout(async () => {
-                    setIsGenerating(false);
-                     await fetch(`${API_BASE_URL}/kb/skill/update`, {
-                        method: 'POST',
-                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            id: skillId,
-                            title: '全新生成的技能', 
-                            status: 'published',
-                            description: description
-                        })
-                    });
+                // Poll for status or just wait a bit and refresh
+                setTimeout(() => {
                     fetchSkills(selectedLibraryId); 
-                    message.success('技能生成成功');
-                }, 3000);
+                    message.success('技能生成任务已提交');
+                    setIsGenerating(false);
+                }, 1000);
                 
                 setIsCreateModalOpen(false);
-                fetchSkills(selectedLibraryId);
             } else {
                 setIsGenerating(false);
                 message.error(data.error || '创建失败');
@@ -392,41 +387,38 @@ const KnowledgeBase: React.FC = () => {
     } else {
         if (!currentSkill) return;
         
-        // Regenerate Mode - Update existing skill status and files
-        const filesJson = JSON.stringify(fileList.map(f => ({
-            name: f.name,
-            url: f.response?.url || f.url,
-            storageName: f.response?.storage_name || f.response?.storageName
-        })));
-
-        // Call API to set status to generating
-         try {
-            await fetch(`${API_BASE_URL}/kb/skill/update`, {
+        // Regenerate Mode - Re-use 'add' logic or update?
+        // Since we refactored backend to async generation via 'add' handler mostly,
+        // but for update/regenerate, we might need a specific handler if we want to keep the same ID.
+        // For now, let's treat regenerate as creating a NEW version or update existing one via a specific API?
+        // Actually, the previous code called `kb/skill/update`.
+        // BUT my backend `UpdateSkill` logic is simple DB update, not AI generation.
+        // `CreateSkillWithAI` handles AI generation.
+        // If we want to regenerate, we probably should use `CreateSkillWithAI` logic but targeted at an existing ID.
+        // Let's call `kb/skill/add` but with the SAME skillId? 
+        // My backend `CreateSkillWithAI` checks `skill_id`. If exists, it UPDATES it.
+        // So we can reuse `kb/skill/add` (CreateSkillWithAI) for regeneration!
+        
+        try {
+            await fetch(`${API_BASE_URL}/kb/skill/add`, { // Reuse add for regenerate
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    id: currentSkill.id,
-                    status: 'generating',
+                    libraryId: selectedLibraryId,
+                    title: currentSkill.title, // Keep title or let AI overwrite? AI overwrites.
+                    skillId: currentSkill.skillId, // Keep same ID
                     description: description,
                     files: filesJson
                 })
             });
-            fetchSkills(selectedLibraryId);
-            setIsCreateModalOpen(false);
-
-             setTimeout(async () => {
-                setIsGenerating(false);
-                 await fetch(`${API_BASE_URL}/kb/skill/update`, {
-                    method: 'POST',
-                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        id: currentSkill.id,
-                        status: 'published'
-                    })
-                });
+            
+            setTimeout(() => {
                 fetchSkills(selectedLibraryId);
-                message.success('技能重新生成成功');
-            }, 3000);
+                message.success('技能重新生成任务已提交');
+                setIsGenerating(false);
+            }, 1000);
+
+            setIsCreateModalOpen(false);
 
          } catch (e) {
              setIsGenerating(false);
@@ -448,30 +440,19 @@ const KnowledgeBase: React.FC = () => {
       setCurrentSkill(skill);
       setDescription(skill.description);
       
-      // Parse files
-      if (skill.files) {
-          try {
-              const parsedFiles = JSON.parse(skill.files);
-              if (Array.isArray(parsedFiles)) {
-                  // Map to UploadFile interface
-                  const uploadFiles: UploadFile[] = parsedFiles.map((f: any, index: number) => ({
-                      uid: `-${index}-${Date.now()}`, // Ensure unique uid
-                      name: f.name,
-                      status: 'done',
-                      url: f.url,
-                      response: { 
-                          url: f.url,
-                          storage_name: f.storageName || f.storage_name
-                      }
-                  }));
-                  setFileList(uploadFiles);
-              } else {
-                  setFileList([]);
+      // Parse files from new structure
+      if (skill.filesList && Array.isArray(skill.filesList)) {
+          const uploadFiles: UploadFile[] = skill.filesList.map((f, index) => ({
+              uid: `-${index}-${Date.now()}`,
+              name: f.name,
+              status: 'done',
+              url: f.url,
+              response: { 
+                  url: f.url,
+                  storage_name: f.storage_name
               }
-          } catch (e) {
-              console.error("Failed to parse skill files", e);
-              setFileList([]);
-          }
+          }));
+          setFileList(uploadFiles);
       } else {
           setFileList([]);
       }
@@ -628,23 +609,17 @@ const KnowledgeBase: React.FC = () => {
           <div className="flex justify-between items-center mb-6">
             <div className="flex items-center gap-2 text-slate-400">
               <AppstoreOutlined />
-              <span className="font-medium">技能卡片 (3)</span>
+              <span className="font-medium">技能卡片 ({skills.length})</span>
             </div>
             <div className="flex gap-2">
-               <Button 
-                 type={viewMode === 'grid' ? 'primary' : 'text'} 
-                 ghost={viewMode === 'grid'}
-                 icon={<AppstoreOutlined />} 
-                 onClick={() => setViewMode('grid')}
-                 className={viewMode !== 'grid' ? 'text-slate-500' : ''}
-               />
-               <Button 
-                 type={viewMode === 'list' ? 'primary' : 'text'} 
-                 ghost={viewMode === 'list'}
-                 icon={<BarsOutlined />} 
-                 onClick={() => setViewMode('list')}
-                 className={viewMode !== 'list' ? 'text-slate-500' : ''}
-               />
+               <Tooltip title="刷新列表">
+                   <Button 
+                     type="text" 
+                     icon={<ReloadOutlined spin={isRefreshing} />} 
+                     onClick={() => fetchSkills(selectedLibraryId)}
+                     className="text-slate-500 hover:text-blue-400"
+                   />
+               </Tooltip>
             </div>
           </div>
 
@@ -654,14 +629,14 @@ const KnowledgeBase: React.FC = () => {
                 <div className="p-5 flex-1 relative">
                   <div className="absolute top-5 right-5">
                     <Tag 
-                        color={skill.status === 'published' ? 'success' : skill.status === 'generating' ? 'processing' : 'default'} 
+                        color={skill.status === 1 ? 'success' : skill.status === 0 ? 'processing' : 'error'} 
                         className={
-                            skill.status === 'published' ? 'bg-[#1a7f37]/15 text-[#2da44e] border-0' : 
-                            skill.status === 'generating' ? 'bg-blue-500/15 text-blue-400 border-0' :
-                            'bg-[#6e7681]/15 text-[#9198a1] border-0'
+                            skill.status === 1 ? 'bg-[#1a7f37]/15 text-[#2da44e] border-0' : 
+                            skill.status === 0 ? 'bg-blue-500/15 text-blue-400 border-0' :
+                            'bg-red-500/15 text-red-400 border-0'
                         }
                     >
-                        {skill.status === 'published' ? '已发布' : skill.status === 'generating' ? '生成中' : '草稿'}
+                        {skill.status === 1 ? '已发布' : skill.status === 0 ? '生成中' : '生成失败'}
                     </Tag>
                   </div>
                   
@@ -686,7 +661,7 @@ const KnowledgeBase: React.FC = () => {
                          className="text-slate-400 hover:text-white hover:bg-[#1f2937] disabled:opacity-30 disabled:hover:text-slate-400 disabled:cursor-not-allowed"
                          icon={<EditOutlined />}
                          onClick={() => navigate(`/skills/${skill.id}`)}
-                         disabled={skill.status === 'generating'}
+                         disabled={skill.status === 0}
                        />
                      </Tooltip>
                      <Tooltip title="重新生成">
@@ -694,8 +669,8 @@ const KnowledgeBase: React.FC = () => {
                          size="small" 
                          type="text"
                          className="text-slate-400 hover:text-blue-400 hover:bg-[#1f2937] disabled:opacity-30 disabled:hover:text-slate-400 disabled:cursor-not-allowed"
-                         icon={<ReloadOutlined spin={skill.status === 'generating'} />}
-                         disabled={skill.status === 'generating'}
+                         icon={<ReloadOutlined spin={skill.status === 0} />}
+                         disabled={skill.status === 0}
                          onClick={() => openRegenerateModal(skill)}
                        />
                      </Tooltip>
@@ -705,7 +680,7 @@ const KnowledgeBase: React.FC = () => {
                          type="text"
                          className="text-slate-400 hover:text-red-400 hover:bg-[#1f2937] disabled:opacity-30 disabled:hover:text-slate-400 disabled:cursor-not-allowed"
                          icon={<DeleteOutlined />}
-                         disabled={skill.status === 'generating'}
+                         disabled={skill.status === 0}
                          onClick={() => handleDeleteSkill(skill.id)}
                        />
                      </Tooltip>
