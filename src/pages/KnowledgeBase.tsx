@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   BookOutlined, 
@@ -14,9 +14,14 @@ import {
   ReloadOutlined,
   EditOutlined,
   DeleteOutlined,
-  ExclamationCircleOutlined
+  ExclamationCircleOutlined,
+  SettingOutlined,
+  SyncOutlined,
+  InfoCircleOutlined
 } from '@ant-design/icons';
-import { Input, Button, Tag, Modal, Upload, message, Tooltip } from 'antd';
+import { Input, Button, Tag, Modal, Upload, message, Tooltip, Select, Space } from 'antd';
+import type { UploadFile } from 'antd/es/upload/interface';
+import { getOpenAIModels } from '../services/api';
 
 const { Dragger } = Upload;
 const { TextArea } = Input;
@@ -29,6 +34,7 @@ interface Skill {
   status: 'published' | 'draft' | 'generating';
   type: 'manual' | 'policy' | 'troubleshoot';
   createdAt: string;
+  files?: string;
 }
 
 interface Library {
@@ -37,20 +43,63 @@ interface Library {
   description?: string;
   count: number;
   icon: React.ReactNode;
+  modelConfig?: string;
 }
+
+import { API_BASE_URL } from '../services/api';
 
 const KnowledgeBase: React.FC = () => {
   const navigate = useNavigate();
   const [modal, contextHolder] = Modal.useModal();
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-  const [selectedLibraryId, setSelectedLibraryId] = useState('manual');
+  const [selectedLibraryId, setSelectedLibraryId] = useState('');
   
   // Library State
-  const [libraries, setLibraries] = useState<Library[]>([
-    { id: 'manual', name: '产品使用手册', count: 12, icon: <BookOutlined /> },
-    { id: 'compliance', name: '合规法务文档', count: 5, icon: <SafetyCertificateOutlined /> },
-    { id: 'specs', name: '内部技术规范', count: 8, icon: <FileTextOutlined /> },
-  ]);
+  const [libraries, setLibraries] = useState<Library[]>([]);
+
+  const fetchLibraries = async () => {
+    try {
+        const res = await fetch(`${API_BASE_URL}/kb/libraries`);
+        const data = await res.json();
+        if (data.code === 200) {
+            setLibraries(data.data.map((l: any) => ({
+                ...l,
+                icon: <BookOutlined /> 
+            })));
+            if (data.data.length > 0 && !selectedLibraryId) {
+                setSelectedLibraryId(data.data[0].id);
+            }
+        }
+    } catch (e) {
+        console.error(e);
+        message.error('获取知识库列表失败');
+    }
+  };
+
+  const fetchSkills = async (libId: string) => {
+    try {
+        const res = await fetch(`${API_BASE_URL}/kb/skills?libraryId=${libId}`);
+        const data = await res.json();
+        if (data.code === 200) {
+            setSkills(data.data);
+        }
+    } catch (e) {
+        console.error(e);
+        message.error('获取技能列表失败');
+    }
+  }
+
+  useEffect(() => {
+    fetchLibraries();
+  }, []);
+
+  useEffect(() => {
+    if (selectedLibraryId) {
+        fetchSkills(selectedLibraryId);
+    } else {
+        setSkills([]);
+    }
+  }, [selectedLibraryId]);
   
   // Library Modal State
   const [isLibraryModalOpen, setIsLibraryModalOpen] = useState(false);
@@ -60,66 +109,180 @@ const KnowledgeBase: React.FC = () => {
   // Skill Modal State
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  
+  // Model Settings State
+  const [isModelModalOpen, setIsModelModalOpen] = useState(false);
+  const [appToken, setAppToken] = useState('');
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
+  const [selectedModel, setSelectedModel] = useState<string>('');
+  const [isLoadingModels, setIsLoadingModels] = useState(false);
+
+  const fetchModelsByToken = async (token: string) => {
+      if (!token) {
+          message.error('请输入应用令牌');
+          return;
+      }
+      try {
+          setIsLoadingModels(true);
+          const res = await getOpenAIModels(token);
+          
+          if (res.data && Array.isArray(res.data)) {
+              const modelList = res.data.map((m: any) => m.id);
+              setAvailableModels(modelList);
+              if (modelList.length > 0 && !modelList.includes(selectedModel)) {
+                  setSelectedModel(modelList[0]);
+              }
+              message.success(`成功加载 ${modelList.length} 个授权模型`);
+          } else {
+              throw new Error('获取授权模型失败：响应数据格式错误');
+          }
+      } catch (e: any) {
+          message.error(e.message || "Token 无效或获取模型失败");
+          setAvailableModels([]);
+      } finally {
+          setIsLoadingModels(false);
+      }
+  };
+
+  const handleSaveModelConfig = async () => {
+      if (!selectedModel) {
+          message.error('请选择模型');
+          return;
+      }
+      
+      const config = {
+          apiKey: appToken,
+          model: selectedModel
+      };
+
+      try {
+        const res = await fetch(`${API_BASE_URL}/kb/library/update`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                id: selectedLibraryId,
+                modelConfig: JSON.stringify(config)
+            })
+        });
+         const data = await res.json();
+        if (data.code === 200) {
+             message.success('模型配置已保存');
+             fetchLibraries(); // Refresh to update local state
+             setIsModelModalOpen(false);
+        } else {
+             message.error(data.error || '保存失败');
+        }
+     } catch (e) {
+         message.error('保存失败');
+     }
+  };
+
+  const openModelSettings = () => {
+      const lib = libraries.find(l => l.id === selectedLibraryId);
+      if (lib && lib.modelConfig) {
+          try {
+              const config = JSON.parse(lib.modelConfig);
+              setAppToken(config.apiKey || '');
+              setSelectedModel(config.model || '');
+              // If token exists, try to fetch models immediately to populate list
+              if (config.apiKey) {
+                  fetchModelsByToken(config.apiKey);
+              }
+          } catch (e) {
+              console.error("Failed to parse model config", e);
+              setAppToken('');
+              setSelectedModel('');
+          }
+      } else {
+          setAppToken('');
+          setSelectedModel('');
+          setAvailableModels([]);
+      }
+      setIsModelModalOpen(true);
+  }
+
   const [modalMode, setModalMode] = useState<'create' | 'regenerate'>('create');
   const [currentSkill, setCurrentSkill] = useState<Skill | null>(null);
   const [description, setDescription] = useState('');
+  const [fileList, setFileList] = useState<UploadFile[]>([]);
 
-  const [skills, setSkills] = useState<Skill[]>([
-    {
-      id: '1',
-      title: '产品规格查询',
-      skillId: 'get_product_specs',
-      description: '当用户询问关于机器人具体硬件参数（如电机功率、传感器精度）时，使用此工具查找。必须优先从提供的知识内容中提取数据...',
-      status: 'published',
-      type: 'manual',
-      createdAt: '2026-01-15'
-    },
-    {
-      id: '2',
-      title: '故障排查引导',
-      skillId: 'troubleshooting_guide',
-      description: '引导用户完成错误代码 E-102 的排查流程。如果用户提到的错误代码不在列表中，请通过 get_manual 工具尝试搜索更多内容...',
-      status: 'generating',
-      type: 'troubleshoot',
-      createdAt: '2026-01-20'
-    },
-    {
-      id: '3',
-      title: '售后政策解答',
-      skillId: 'after_sales_policy',
-      description: '针对退换货、保修期限等问题，查阅知识库中的政策条款并给出回答。回答时需注明的政策版本号和生效日期...',
-      status: 'published',
-      type: 'policy',
-      createdAt: '2026-01-22'
+  const handleUpload = async (options: any) => {
+    const { onSuccess, onError, file } = options;
+    const formData = new FormData();
+    formData.append('files', file);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/upload`, {
+        method: 'POST',
+        body: formData,
+      });
+      const result = await response.json();
+      if (result.code === 200 && result.data && result.data.length > 0) {
+        onSuccess(result.data[0]);
+        message.success(`${file.name} 上传成功`);
+      } else {
+        onError(new Error(result.msg || 'Upload failed'));
+        message.error(`${file.name} 上传失败`);
+      }
+    } catch (error) {
+      onError(error);
+      message.error(`${file.name} 上传出错`);
     }
-  ]);
+  };
+
+  const [skills, setSkills] = useState<Skill[]>([]);
 
   // Library Handlers
-  const handleLibraryModalSubmit = () => {
+  const handleLibraryModalSubmit = async () => {
     if (!libraryForm.name) {
       message.error('请输入知识库名称');
       return;
     }
 
     if (libraryModalMode === 'create') {
-      const newLib: Library = {
-        id: `lib-${Date.now()}`,
-        name: libraryForm.name,
-        description: libraryForm.description,
-        count: 0,
-        icon: <BookOutlined /> // Default icon
-      };
-      setLibraries([...libraries, newLib]);
-      message.success('知识库创建成功');
+        try {
+            const res = await fetch(`${API_BASE_URL}/kb/library/add`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: libraryForm.name,
+                    description: libraryForm.description
+                })
+            });
+            const data = await res.json();
+            if (data.code === 200) {
+                 message.success('知识库创建成功');
+                 fetchLibraries();
+                 setIsLibraryModalOpen(false);
+            } else {
+                message.error(data.error || '创建失败');
+            }
+        } catch (e) {
+             message.error('创建失败');
+        }
     } else {
-      setLibraries(libraries.map(lib => 
-        lib.id === selectedLibraryId 
-          ? { ...lib, name: libraryForm.name, description: libraryForm.description }
-          : lib
-      ));
-      message.success('知识库更新成功');
+         try {
+            const res = await fetch(`${API_BASE_URL}/kb/library/update`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    id: selectedLibraryId,
+                    name: libraryForm.name,
+                    description: libraryForm.description
+                })
+            });
+             const data = await res.json();
+            if (data.code === 200) {
+                 message.success('知识库更新成功');
+                 fetchLibraries();
+                 setIsLibraryModalOpen(false);
+            } else {
+                 message.error(data.error || '更新失败');
+            }
+         } catch (e) {
+             message.error('更新失败');
+         }
     }
-    setIsLibraryModalOpen(false);
   };
 
   const handleDeleteLibrary = () => {
@@ -133,15 +296,28 @@ const KnowledgeBase: React.FC = () => {
       className: 'dark-confirm-modal',
       okButtonProps: { className: 'bg-red-600 border-red-600 hover:bg-red-500' },
       cancelButtonProps: { className: 'bg-transparent border-[#30363d] text-slate-300 hover:text-white hover:border-slate-500' },
-      onOk() {
-        const newLibs = libraries.filter(l => l.id !== selectedLibraryId);
-        setLibraries(newLibs);
-        if (newLibs.length > 0) {
-          setSelectedLibraryId(newLibs[0].id);
-        } else {
-          setSelectedLibraryId('');
-        }
-        message.success('知识库已删除');
+      onOk: async () => {
+          try {
+             const res = await fetch(`${API_BASE_URL}/kb/library/delete`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: selectedLibraryId })
+            }); 
+            const data = await res.json();
+            if (data.code === 200) {
+                message.success('知识库已删除');
+                fetchLibraries();
+                // Reset selection if needed, simplified by fetchLibraries updating state? 
+                // We need to wait for fetchLibraries to update libraries before setting selectedLibraryId?
+                // Actually fetchLibraries sets default if none selected.
+                // But we should clear selectedLibraryId first.
+                setSelectedLibraryId('');
+            } else {
+                message.error(data.error || '删除失败');
+            }
+          } catch(e) {
+              message.error('删除失败');
+          }
       },
     });
   };
@@ -159,58 +335,103 @@ const KnowledgeBase: React.FC = () => {
     setIsLibraryModalOpen(true);
   };
 
-  const handleModalSubmit = () => {
+  const handleModalSubmit = async () => {
     setIsGenerating(true);
 
     if (modalMode === 'create') {
-        const newSkill: Skill = {
-            id: `new-${Date.now()}`,
-            title: '正在生成新技能...',
-            skillId: 'generating...',
-            description: description || 'AI 正在解析文档并构建工具定义...',
-            status: 'generating',
-            type: 'manual',
-            createdAt: new Date().toISOString().split('T')[0]
-        };
-        
-        setSkills(prev => [...prev, newSkill]);
-        setIsCreateModalOpen(false);
-        
-        // Simulate generation completion
-        setTimeout(() => {
-            setIsGenerating(false);
-            setSkills(prev => prev.map(s => s.id === newSkill.id ? {
-                ...s,
-                title: '全新生成的技能',
-                skillId: 'new_generated_skill',
-                description: description || '这是基于上传文档自动生成的技能描述。',
-                status: 'published'
-            } : s));
-            message.success('技能生成成功');
-        }, 3000);
+        const filesJson = JSON.stringify(fileList.map(f => ({
+            name: f.name,
+            url: f.response?.url || f.url,
+            storageName: f.response?.storage_name
+        })));
+
+        try {
+             const res = await fetch(`${API_BASE_URL}/kb/skill/add`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    libraryId: selectedLibraryId,
+                    title: '正在生成新技能...', 
+                    skillId: `skill-${Date.now()}`,
+                    description: description,
+                    status: 'generating',
+                    type: 'manual',
+                    files: filesJson
+                })
+            });
+            const data = await res.json();
+            if (data.code === 200) {
+                const skillId = data.data.id;
+                
+                 setTimeout(async () => {
+                    setIsGenerating(false);
+                     await fetch(`${API_BASE_URL}/kb/skill/update`, {
+                        method: 'POST',
+                         headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            id: skillId,
+                            title: '全新生成的技能', 
+                            status: 'published',
+                            description: description
+                        })
+                    });
+                    fetchSkills(selectedLibraryId); 
+                    message.success('技能生成成功');
+                }, 3000);
+                
+                setIsCreateModalOpen(false);
+                fetchSkills(selectedLibraryId);
+            } else {
+                setIsGenerating(false);
+                message.error(data.error || '创建失败');
+            }
+        } catch (e) {
+             setIsGenerating(false);
+             message.error('创建失败');
+        }
     } else {
-        // Regenerate Mode
         if (!currentSkill) return;
         
-        // Update existing skill status
-        setSkills(prev => prev.map(s => s.id === currentSkill.id ? {
-            ...s,
-            status: 'generating',
-            description: description || s.description
-        } : s));
-        
-        setIsCreateModalOpen(false);
+        // Regenerate Mode - Update existing skill status and files
+        const filesJson = JSON.stringify(fileList.map(f => ({
+            name: f.name,
+            url: f.response?.url || f.url,
+            storageName: f.response?.storage_name || f.response?.storageName
+        })));
 
-        // Simulate regeneration completion
-        setTimeout(() => {
-            setIsGenerating(false);
-            setSkills(prev => prev.map(s => s.id === currentSkill.id ? {
-                ...s,
-                status: 'published',
-                title: s.title // Keep original title or maybe update it
-            } : s));
-            message.success('技能重新生成成功');
-        }, 3000);
+        // Call API to set status to generating
+         try {
+            await fetch(`${API_BASE_URL}/kb/skill/update`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    id: currentSkill.id,
+                    status: 'generating',
+                    description: description,
+                    files: filesJson
+                })
+            });
+            fetchSkills(selectedLibraryId);
+            setIsCreateModalOpen(false);
+
+             setTimeout(async () => {
+                setIsGenerating(false);
+                 await fetch(`${API_BASE_URL}/kb/skill/update`, {
+                    method: 'POST',
+                     headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        id: currentSkill.id,
+                        status: 'published'
+                    })
+                });
+                fetchSkills(selectedLibraryId);
+                message.success('技能重新生成成功');
+            }, 3000);
+
+         } catch (e) {
+             setIsGenerating(false);
+             message.error('更新失败');
+         }
     }
   };
 
@@ -218,6 +439,7 @@ const KnowledgeBase: React.FC = () => {
       setModalMode('create');
       setCurrentSkill(null);
       setDescription('');
+      setFileList([]);
       setIsCreateModalOpen(true);
   }
 
@@ -225,8 +447,69 @@ const KnowledgeBase: React.FC = () => {
       setModalMode('regenerate');
       setCurrentSkill(skill);
       setDescription(skill.description);
+      
+      // Parse files
+      if (skill.files) {
+          try {
+              const parsedFiles = JSON.parse(skill.files);
+              if (Array.isArray(parsedFiles)) {
+                  // Map to UploadFile interface
+                  const uploadFiles: UploadFile[] = parsedFiles.map((f: any, index: number) => ({
+                      uid: `-${index}-${Date.now()}`, // Ensure unique uid
+                      name: f.name,
+                      status: 'done',
+                      url: f.url,
+                      response: { 
+                          url: f.url,
+                          storage_name: f.storageName || f.storage_name
+                      }
+                  }));
+                  setFileList(uploadFiles);
+              } else {
+                  setFileList([]);
+              }
+          } catch (e) {
+              console.error("Failed to parse skill files", e);
+              setFileList([]);
+          }
+      } else {
+          setFileList([]);
+      }
+
       setIsCreateModalOpen(true);
   }
+
+  const handleDeleteSkill = (skillId: string) => {
+    modal.confirm({
+      title: <span className="text-white">确认删除技能?</span>,
+      icon: <ExclamationCircleOutlined style={{ color: '#cf222e' }} />,
+      content: <div className="text-slate-300">删除后无法恢复。</div>,
+      okText: '确认删除',
+      okType: 'danger',
+      cancelText: '取消',
+      className: 'dark-confirm-modal',
+      okButtonProps: { className: 'bg-red-600 border-red-600 hover:bg-red-500' },
+      cancelButtonProps: { className: 'bg-transparent border-[#30363d] text-slate-300 hover:text-white hover:border-slate-500' },
+      onOk: async () => {
+          try {
+             const res = await fetch(`${API_BASE_URL}/kb/skill/delete`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: skillId })
+            }); 
+            const data = await res.json();
+            if (data.code === 200) {
+                message.success('技能已删除');
+                fetchSkills(selectedLibraryId);
+            } else {
+                message.error(data.error || '删除失败');
+            }
+          } catch(e) {
+              message.error('删除失败');
+          }
+      },
+    });
+  };
 
   const activeLibrary = libraries.find(l => l.id === selectedLibraryId);
 
@@ -317,7 +600,7 @@ const KnowledgeBase: React.FC = () => {
           <div className="flex justify-between items-end">
             <div className="max-w-3xl">
               <p className="text-slate-400 mb-2">
-                本知识库包含公司旗下所有智能硬件产品的核心使用手册与技术规范。
+                {activeLibrary?.description || '暂无描述'}
               </p>
               <p className="text-slate-500 text-sm">
                 该库已编译为一系列可执行的 Agent 技能。每个技能都包含独立的指令集、知识上下文和工具定义，遵循 Claude Agent Skills 规范。技能一旦更新并发布，关联的智能体将能够通过 Tool Calling 接口即时调用相关知识。
@@ -325,14 +608,16 @@ const KnowledgeBase: React.FC = () => {
             </div>
             <div className="text-right">
               <div className="flex gap-6 text-slate-400 text-sm">
-                <div>
-                    <span className="block text-xs text-slate-500">关联技能数</span>
-                    <span className="text-xl font-bold text-blue-400">12</span>
-                </div>
-                <div>
-                    <span className="block text-xs text-slate-500">更新于</span>
-                    <span className="text-xl font-bold text-slate-200">2h 前</span>
-                </div>
+                {activeLibrary && (
+                    <Tooltip title="配置模型设置">
+                        <Button 
+                            type="text" 
+                            icon={<SettingOutlined className="text-xl" />} 
+                            className="text-slate-400 hover:text-blue-400 flex items-center justify-center h-auto p-2"
+                            onClick={openModelSettings}
+                        />
+                    </Tooltip>
+                )}
               </div>
             </div>
           </div>
@@ -421,6 +706,7 @@ const KnowledgeBase: React.FC = () => {
                          className="text-slate-400 hover:text-red-400 hover:bg-[#1f2937] disabled:opacity-30 disabled:hover:text-slate-400 disabled:cursor-not-allowed"
                          icon={<DeleteOutlined />}
                          disabled={skill.status === 'generating'}
+                         onClick={() => handleDeleteSkill(skill.id)}
                        />
                      </Tooltip>
                    </div>
@@ -511,9 +797,15 @@ const KnowledgeBase: React.FC = () => {
                 }
             `}</style>
             <Dragger 
-                multiple={false} 
+                multiple={true} 
                 className="dark-dragger group"
                 style={{ backgroundColor: '#161b22', borderColor: '#30363d' }}
+                fileList={fileList}
+                customRequest={handleUpload}
+                onChange={({ fileList }) => setFileList(fileList)}
+                onRemove={(file) => {
+                    setFileList(prev => prev.filter(item => item.uid !== file.uid));
+                }}
             >
                 <p className="ant-upload-drag-icon">
                     <CloudUploadOutlined className="text-slate-500 text-4xl group-hover:text-blue-500 transition-colors" />
@@ -559,6 +851,75 @@ const KnowledgeBase: React.FC = () => {
             >
                 {modalMode === 'create' ? '开始生成' : '开始重新生成'}
             </Button>
+        </div>
+      </Modal>
+
+      {/* Model Settings Modal */}
+      <Modal
+        title={
+            <div className="text-white font-bold text-lg mb-1 flex items-center gap-2">
+                <SettingOutlined />
+                <span>知识库模型设置</span>
+            </div>
+        }
+        open={isModelModalOpen}
+        onCancel={() => setIsModelModalOpen(false)}
+        onOk={handleSaveModelConfig}
+        okText="保存配置"
+        cancelText="取消"
+        width={500}
+        className="dark-modal"
+        styles={{ 
+            content: { backgroundColor: '#0d1117', border: '1px solid #30363d' }, 
+            header: { backgroundColor: '#0d1117', borderBottom: 'none', paddingBottom: 0 },
+            body: { padding: '24px' } 
+        } as any}
+        closeIcon={<span className="text-slate-400 hover:text-white">×</span>}
+        centered
+      >
+        <div className="space-y-6">
+            <div>
+              <div className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-2 flex justify-between items-center">
+                <span>应用令牌 (App Token)</span>
+                <Tooltip title="输入 appid_secret 格式的令牌以获取授权模型">
+                  <InfoCircleOutlined className="text-slate-500 cursor-help" />
+                </Tooltip>
+              </div>
+              <Space.Compact className="w-full">
+                <Input.Password 
+                  value={appToken}
+                  onChange={(e) => setAppToken(e.target.value)}
+                  placeholder="appid_secret"
+                  className="bg-[#161b22] border-[#30363d] text-white placeholder:text-slate-600"
+                />
+                <Button 
+                    type="primary" 
+                    icon={<SyncOutlined spin={isLoadingModels} />} 
+                    onClick={() => fetchModelsByToken(appToken)}
+                    className="bg-blue-600 border-blue-600 hover:bg-blue-500"
+                    title="加载模型"
+                />
+              </Space.Compact>
+            </div>
+            
+            <div>
+              <div className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">选择模型</div>
+              <Select 
+                value={selectedModel}
+                onChange={setSelectedModel}
+                className="w-full"
+                options={availableModels.map(m => ({ value: m, label: m }))}
+                placeholder={availableModels.length > 0 ? "选择模型" : "请先输入令牌加载模型"}
+                disabled={availableModels.length === 0}
+                style={{ backgroundColor: '#161b22' }}
+                dropdownStyle={{ backgroundColor: '#161b22', border: '1px solid #30363d' }}
+              />
+            </div>
+            
+            <div className="bg-[#161b22] p-3 rounded border border-[#30363d] text-xs text-slate-400">
+                <InfoCircleOutlined className="mr-2 text-blue-500" />
+                此配置将用于该知识库的所有生成任务（如技能生成、RAG 检索增强生成等）。
+            </div>
         </div>
       </Modal>
     </div>
