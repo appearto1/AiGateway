@@ -4,22 +4,20 @@ import {
   Select, 
   Button, 
   Table, 
-  Tag, 
   Typography, 
   Space, 
   Tooltip,
-  Pagination,
   ConfigProvider,
   theme,
   Modal,
   Form,
   Switch,
-  Divider,
-  Checkbox,
   message,
   Popconfirm,
   InputNumber,
-  DatePicker
+  DatePicker,
+  TreeSelect,
+  Radio
 } from 'antd';
 import { 
   SearchOutlined, 
@@ -28,27 +26,25 @@ import {
   ExportOutlined, 
   EditOutlined, 
   KeyOutlined, 
-  FileTextOutlined,
-  InfoCircleOutlined,
   InfoCircleFilled,
   SyncOutlined,
   EyeOutlined,
   EyeInvisibleOutlined,
-  SafetyCertificateFilled,
-  AppstoreFilled,
   ThunderboltFilled,
-  DatabaseFilled,
   CloudFilled,
-  GlobalOutlined,
-  CodeOutlined,
   DeleteOutlined,
-  BarChartOutlined
+  BarChartOutlined,
+  ReadFilled,
+  InfoCircleOutlined
 } from '@ant-design/icons';
-import { getApps, createApp, updateApp, rotateAppSecret, deleteApp, getModelProviders, getAppModelStats } from '../services/api';
-import type { AppData, ModelProvider, AppUsageStatsByModel } from '../services/api';
+import { 
+  getApps, createApp, updateApp, rotateAppSecret, deleteApp, getModelProviders, getAppModelStats,
+  getKBForApp
+} from '../services/api';
+import type { AppData, ModelProvider, AppUsageStatsByModel, KnowledgeLibrary, KnowledgeSkill } from '../services/api';
 import dayjs, { type Dayjs } from 'dayjs';
 
-const { Text, Title } = Typography;
+const { Text } = Typography;
 const { TextArea } = Input;
 
 const AppsAndTokens: React.FC = () => {
@@ -70,6 +66,10 @@ const AppsAndTokens: React.FC = () => {
     dayjs().subtract(6, 'day'), // 7天前（包含今天共7天）
     dayjs() // 今天
   ]);
+  
+  // Knowledge Base State
+  const [kbTreeData, setKbTreeData] = useState<any[]>([]);
+  const [isAgentEnabled, setIsAgentEnabled] = useState(false);
 
   // Combine models from all active providers
   const allAvailableModels = modelProviders.reduce((acc: any[], provider) => {
@@ -117,22 +117,58 @@ const AppsAndTokens: React.FC = () => {
       }
   };
 
+  const fetchKnowledgeData = async () => {
+    try {
+        const res = await getKBForApp();
+        
+        if (res.code === 200) {
+            const libs = res.data.libraries || [];
+            const skills = res.data.skills || [];
+            
+            // Construct Tree Data
+            const tree = libs.map((lib: KnowledgeLibrary) => {
+                const libSkills = skills.filter((s: KnowledgeSkill) => s.libraryId === lib.id);
+                return {
+                    title: lib.name,
+                    value: `lib_${lib.id}`,
+                    key: `lib_${lib.id}`,
+                    children: libSkills.map((skill: KnowledgeSkill) => ({
+                        title: skill.title,
+                        value: skill.id, // Use actual skill ID as value
+                        key: skill.id,
+                        isLeaf: true
+                    }))
+                };
+            });
+            setKbTreeData(tree);
+        }
+    } catch (error) {
+        console.error("Failed to fetch KB data", error);
+    }
+  };
+
   useEffect(() => {
     fetchApps();
     fetchModelProviders();
+    fetchKnowledgeData();
   }, [searchName, filterStatus]);
 
   const handleEdit = (app: AppData) => {
     setEditingApp(app);
     
-    // Parse model_config if it exists, otherwise default to all checked or empty
+    // Parse configs
     let selectedModels: string[] = [];
+    let selectedKbs: string[] = [];
     try {
-        if (app.model_config) {
-            selectedModels = JSON.parse(app.model_config);
+        if (app.model_config) selectedModels = JSON.parse(app.model_config);
+        if (app.kb_config) {
+            selectedKbs = JSON.parse(app.kb_config);
+            setIsAgentEnabled(selectedKbs.length > 0);
+        } else {
+            setIsAgentEnabled(false);
         }
     } catch (e) {
-        console.error("Failed to parse model_config", e);
+        console.error("Failed to parse config", e);
     }
 
     form.setFieldsValue({
@@ -143,21 +179,23 @@ const AppsAndTokens: React.FC = () => {
       token_limit: app.token_limit,
       daily_token_limit: app.daily_token_limit,
       qps_limit: app.qps_limit,
-      selected_models: selectedModels
+      selected_models: selectedModels,
+      selected_kbs: selectedKbs
     });
     setIsModalOpen(true);
   };
 
     const handleCreate = () => {
     setEditingApp(null);
+    setIsAgentEnabled(false);
     form.resetFields();
-    // Default select all models or none? Let's select none by default or maybe first few.
     form.setFieldsValue({
         status: true,
         token_limit: 10000000,
         daily_token_limit: 500000,
         qps_limit: 10,
-        selected_models: [] 
+        selected_models: [],
+        selected_kbs: []
     });
     setIsModalOpen(true);
   };
@@ -171,11 +209,15 @@ const AppsAndTokens: React.FC = () => {
   const handleSave = async () => {
     try {
         const values = await form.validateFields();
+        
+        // If agent mode is disabled, clear KB config
+        const finalKbs = isAgentEnabled ? (values.selected_kbs || []) : [];
+        
         const payload = {
             ...values,
             status: values.status ? 0 : 1,
             model_config: JSON.stringify(values.selected_models || []),
-            kb_config: JSON.stringify([]),
+            kb_config: JSON.stringify(finalKbs),
             mcp_config: JSON.stringify([]),
         };
 
@@ -195,7 +237,6 @@ const AppsAndTokens: React.FC = () => {
         }
     } catch (error) {
         console.error(error);
-        // Form validation error or API error
     }
   };
 
@@ -205,10 +246,9 @@ const AppsAndTokens: React.FC = () => {
           const res = await rotateAppSecret(editingApp.id);
           if (res.code === 200) {
               messageApi.success('密钥已轮换');
-              // Update local state and form
               setEditingApp(prev => prev ? ({...prev, app_secret: res.data.app_secret}) : null);
               form.setFieldValue('app_secret', res.data.app_secret);
-              fetchApps(); // Refresh list in background
+              fetchApps();
           } else {
               messageApi.error(res.msg || '轮换失败');
           }
@@ -237,7 +277,6 @@ const AppsAndTokens: React.FC = () => {
         await navigator.clipboard.writeText(text);
         messageApi.success(successMessage);
       } else {
-        // Fallback for older browsers or non-secure contexts
         const textArea = document.createElement("textarea");
         textArea.value = text;
         textArea.style.position = "fixed";
@@ -332,6 +371,29 @@ const AppsAndTokens: React.FC = () => {
       ),
     },
     {
+      title: '服务模式',
+      dataIndex: 'kb_config',
+      key: 'mode',
+      render: (kbConfig: string) => {
+        let isAgent = false;
+        try {
+            const kbs = JSON.parse(kbConfig || '[]');
+            isAgent = kbs.length > 0;
+        } catch(e) {}
+        
+        return (
+            <div className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wider ${
+                isAgent 
+                ? 'bg-purple-500/10 border-purple-500/20 text-purple-400' 
+                : 'bg-blue-500/10 border-blue-500/20 text-blue-400'
+              }`}>
+                {isAgent ? <ThunderboltFilled className="text-[10px]" /> : <SyncOutlined className="text-[10px]" />}
+                {isAgent ? 'Agent' : 'Proxy'}
+            </div>
+        );
+      }
+    },
+    {
       title: 'Token 限额',
       dataIndex: 'token_limit',
       key: 'token_limit',
@@ -416,7 +478,6 @@ const AppsAndTokens: React.FC = () => {
   const fetchStatsData = async (appId: string, dateRange: [Dayjs, Dayjs]) => {
     setStatsLoading(true);
     try {
-      // 计算日期范围的开始和结束时间
       const startTime = dateRange[0].startOf('day').format('YYYY-MM-DD HH:mm:ss');
       const endTime = dateRange[1].endOf('day').format('YYYY-MM-DD HH:mm:ss');
       
@@ -439,7 +500,6 @@ const AppsAndTokens: React.FC = () => {
 
   const handleStatsDateRangeChange = (dates: [Dayjs | null, Dayjs | null] | null) => {
     if (dates && dates[0] && dates[1]) {
-      // 检查日期范围是否超过3个月
       const daysDiff = dates[1].diff(dates[0], 'day');
       if (daysDiff > 90) {
         messageApi.warning('日期范围不能超过3个月（90天）');
@@ -570,6 +630,10 @@ const AppsAndTokens: React.FC = () => {
                 Select: {
                     colorBgContainer: '#111a22',
                     colorBorder: '#233648',
+                },
+                TreeSelect: {
+                    colorBgContainer: '#111a22',
+                    colorBorder: '#233648',
                 }
             }
         }}
@@ -583,7 +647,7 @@ const AppsAndTokens: React.FC = () => {
             closeIcon={<CustomCloseOutlined className="text-slate-400 hover:text-white" />}
             styles={{
                 mask: { backdropFilter: 'blur(4px)', backgroundColor: 'rgba(0, 0, 0, 0.6)' },
-                content: { padding: 0, border: '1px solid #233648' }
+                body: { padding: 0, border: '1px solid #233648' }
             }}
             title={
                 <div className="px-6 py-5 border-b border-[#233648] flex items-center gap-3">
@@ -652,6 +716,57 @@ const AppsAndTokens: React.FC = () => {
                                 </Button>
                             </div>
                         </Form.Item>
+                    </div>
+                    )}
+
+                    {/* Section: Service Mode Selection (Progressive Disclosure) */}
+                    <div className="bg-[#111a22]/50 border border-[#233648] rounded-xl p-6 space-y-4">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <ThunderboltFilled className="text-primary" />
+                                <span className="text-white font-bold">服务模式配置</span>
+                            </div>
+                            <Radio.Group 
+                                value={isAgentEnabled ? 'agent' : 'proxy'} 
+                                onChange={(e) => setIsAgentEnabled(e.target.value === 'agent')}
+                                buttonStyle="solid"
+                                size="small"
+                                className="custom-radio-group"
+                            >
+                                <Radio.Button value="proxy">标准 Proxy</Radio.Button>
+                                <Radio.Button value="agent">Agent 技能模式</Radio.Button>
+                            </Radio.Group>
+                        </div>
+                        <p className="text-slate-500 text-[11px] mb-0">
+                            {isAgentEnabled 
+                                ? "Agent 模式允许模型调用知识库技能，支持多轮对话自动触发工具执行。" 
+                                : "标准 Proxy 模式仅作为 API 转发，直接透明传递模型原始能力。"}
+                        </p>
+                    </div>
+
+                    {/* Section: Knowledge Base Configuration (Only show if Agent mode enabled) */}
+                    {isAgentEnabled && (
+                    <div className="bg-[#111a22]/50 border border-[#233648] rounded-xl p-6 space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                        <div className="flex items-center gap-2 mb-2">
+                            <ReadFilled className="text-primary" />
+                            <span className="text-white font-bold">知识库与技能配置</span>
+                        </div>
+                        
+                        <Form.Item name="selected_kbs" label={<span className="text-slate-400 text-xs font-bold uppercase tracking-wider">选择关联的知识库技能</span>} className="mb-0">
+                            <TreeSelect
+                                treeData={kbTreeData}
+                                treeCheckable={true}
+                                showCheckedStrategy={TreeSelect.SHOW_CHILD}
+                                placeholder="选择允许此应用访问的知识库技能（勾选知识库将自动选择其下所有技能）"
+                                className="w-full"
+                                dropdownStyle={{ maxHeight: 400, overflow: 'auto', backgroundColor: '#1a2632' }}
+                                maxTagCount="responsive"
+                                allowClear
+                            />
+                        </Form.Item>
+                         <p className="text-slate-500 text-[10px] mt-2 italic">
+                            * 勾选父节点（知识库）将默认选中该知识库下的所有技能。
+                        </p>
                     </div>
                     )}
 

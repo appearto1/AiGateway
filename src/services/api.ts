@@ -260,3 +260,38 @@ export const getAppModelStats = async (appId: string, params?: Omit<AppUsageStat
     });
     return response.data;
 };
+
+// Knowledge Base API
+export interface KnowledgeLibrary {
+    id: string;
+    name: string;
+    description: string;
+    icon: string;
+    count: number;
+}
+
+export interface KnowledgeSkill {
+    id: string;
+    libraryId: string;
+    title: string;
+    skillId: string;
+    description: string;
+    type: string;
+}
+
+export const getKnowledgeLibraries = async () => {
+    const response = await axios.get(`${API_BASE_URL}/kb/libraries`);
+    return response.data;
+};
+
+export const getKnowledgeSkills = async (libraryId?: string) => {
+    const params: any = {};
+    if (libraryId) params.libraryId = libraryId;
+    const response = await axios.get(`${API_BASE_URL}/kb/skills`, { params });
+    return response.data;
+};
+
+export const getKBForApp = async () => {
+    const response = await axios.get(`${API_BASE_URL}/app/kb_data`);
+    return response.data;
+};

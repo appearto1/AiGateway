@@ -30,7 +30,8 @@ import {
   LinkOutlined, 
   CloseOutlined,
   InfoCircleOutlined,
-  SyncOutlined
+  SyncOutlined,
+  CheckCircleFilled
 } from '@ant-design/icons';
 import type { ChatMessage, ChatCompletionRequest } from '../services/api';
 import { getOpenAIModels, chatCompletionsStream } from '../services/api';
@@ -53,6 +54,13 @@ interface ExtendedChatMessage extends ChatMessage {
   reasoning?: string;
   reasoningCollapsed?: boolean;
   thinking?: boolean;
+  steps?: {
+    type: 'thought' | 'tool' | 'result';
+    content: string;
+    status: 'pending' | 'running' | 'completed' | 'error';
+    toolName?: string;
+    toolArgs?: string;
+  }[];
 }
 
 const ModelPlayground: React.FC = () => {
@@ -234,13 +242,42 @@ const ModelPlayground: React.FC = () => {
                         if (dataStr === '[DONE]') continue;
                         try {
                             const data = JSON.parse(dataStr);
+                            
+                            // 1. 处理自定义工具信息事件 (x_tool_info)
+                            if (data.type === 'x_tool_info' && data.info) {
+                                setMessages(prev => {
+                                    const last = [...prev];
+                                    const currentMsg = last[last.length - 1];
+                                    let updatedSteps = [...(currentMsg.steps || [])];
+                                    
+                                    // 遍历现有的步骤，如果 name 匹配，则更新为 Title
+                                    updatedSteps = updatedSteps.map(step => {
+                                        if (step.type === 'tool' && data.info[step.toolName]) {
+                                            return { ...step, displayName: data.info[step.toolName], status: 'completed' }; // 收到 info 说明后端准备执行了，标记为 completed
+                                        }
+                                        return step;
+                                    });
+                                    
+                                    // 同时也把所有 pending/running 的标记为 completed (作为兜底)
+                                    updatedSteps = updatedSteps.map(s => s.status === 'running' ? { ...s, status: 'completed' } : s);
+
+                                    last[last.length - 1] = {
+                                        ...currentMsg,
+                                        steps: updatedSteps
+                                    };
+                                    return last;
+                                });
+                                continue;
+                            }
+
                             const delta = data.choices?.[0]?.delta;
                             const content = delta?.content || '';
                             const reasoning = delta?.reasoning_content || '';
+                            const toolCalls = delta?.tool_calls; // 获取工具调用
                             const chunkId = data.id; // 获取 chunk 中的 ID
                             if (chunkId) finalRequestId = chunkId;
 
-                            // 获取 Usage 统计信息（某些厂商会在最后一个 chunk 返回）
+                            // 获取 Usage 统计信息
                             if (data.usage) {
                                 usage = data.usage;
                             }
@@ -249,18 +286,60 @@ const ModelPlayground: React.FC = () => {
                             fullContent += content;
                             fullReasoning += reasoning;
                             
-                            // 逻辑：如果正文内容开始出现（从空变有），则自动折叠思考过程
+                            // 逻辑：如果正文内容开始出现（从空变有），则自动折叠思考过程，并将所有工具调用标记为完成
                             const shouldCollapse = prevContentLength === 0 && fullContent.length > 0;
 
                             setMessages(prev => {
                                 const last = [...prev];
                                 const currentMsg = last[last.length - 1];
+                                
+                                // 正确合并流式 tool_calls
+                                let updatedSteps = [...(currentMsg.steps || [])];
+                                
+                                if (toolCalls && Array.isArray(toolCalls)) {
+                                    toolCalls.forEach((tc: any) => {
+                                        const index = tc.index;
+                                        // 查找是否已有该 index 的 step
+                                        // 注意：我们假设 steps 数组的顺序对应 index，或者我们需要在 step 对象里存 index
+                                        // 简单起见，我们查找对应 index 的 step，或者如果没有 index 属性，就假设是追加的
+                                        
+                                        // 更稳健的做法：在 step 里存储 index
+                                        let stepIndex = updatedSteps.findIndex((s: any) => s.index === index);
+                                        
+                                        if (stepIndex !== -1) {
+                                            // 更新现有 step
+                                            const existingStep = updatedSteps[stepIndex];
+                                            updatedSteps[stepIndex] = {
+                                                ...existingStep,
+                                                toolName: existingStep.toolName || tc.function?.name, // name 可能只在第一帧出现
+                                                toolArgs: (existingStep.toolArgs || '') + (tc.function?.arguments || ''),
+                                                status: 'running'
+                                            };
+                                        } else {
+                                            // 新增 step
+                                            updatedSteps.push({
+                                                type: 'tool',
+                                                index: index, // 记录 index 以便合并
+                                                toolName: tc.function?.name,
+                                                toolArgs: tc.function?.arguments || '',
+                                                status: 'running'
+                                            });
+                                        }
+                                    });
+                                }
+
+                                // 如果开始输出正文或思考内容，且没有新的 tool calls，说明上一轮工具调用结束
+                                if ((content || reasoning) && !toolCalls) {
+                                     updatedSteps = updatedSteps.map(s => s.status === 'running' ? { ...s, status: 'completed' } : s);
+                                }
+                                
                                 last[last.length - 1] = {
                                     ...currentMsg,
                                     content: fullContent,
                                     reasoning: fullReasoning,
                                     reasoningCollapsed: shouldCollapse ? true : currentMsg.reasoningCollapsed,
                                     thinking: false,
+                                    steps: updatedSteps,
                                     meta: {
                                         ...currentMsg.meta,
                                         requestId: finalRequestId || currentMsg.meta?.requestId,
@@ -521,6 +600,28 @@ const ModelPlayground: React.FC = () => {
                     </div>
                   ) : (
                     <div className="space-y-3">
+                        {/* 实时步骤显示 (工具调用等) */}
+                        {msg.steps && msg.steps.length > 0 && (
+                            <div className="space-y-2 mb-4">
+                                {msg.steps.map((step, sIdx) => (
+                                    <div key={sIdx} className={`flex items-center gap-3 bg-[#111a22] px-3 py-2 rounded-lg border border-primary/20 ${step.status === 'running' ? 'animate-pulse' : ''}`}>
+                                        <div className="bg-primary/20 p-1.5 rounded-md">
+                                            <BuildOutlined className="text-primary text-xs" />
+                                        </div>
+                                        <div className="flex flex-col">
+                                            <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">执行技能工具</span>
+                                            <span className="text-xs text-primary font-mono">{step.displayName || step.toolName || 'Unknown Tool'}</span>
+                                        </div>
+                                        {step.status === 'running' ? (
+                                            <LoadingOutlined className="ml-auto text-primary text-xs" />
+                                        ) : (
+                                            <CheckCircleFilled className="ml-auto text-green-500 text-xs" />
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
                         {msg.reasoning && (
                             <div className="bg-[#111a22] border-l-2 border-primary/40 mb-3 rounded-r-lg overflow-hidden transition-all">
                                 <div 
