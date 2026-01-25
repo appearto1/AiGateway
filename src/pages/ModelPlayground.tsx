@@ -2,11 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Select, 
   Button, 
-  Typography, 
   Slider,
   Input,
   Space,
-  Avatar,
   Tooltip,
   Modal,
   ConfigProvider,
@@ -19,13 +17,11 @@ import {
   PaperClipOutlined,
   CodeOutlined,
   RobotOutlined,
-  UserOutlined,
   SettingOutlined,
   ThunderboltFilled,
   ClockCircleOutlined,
   DatabaseOutlined,
   BuildOutlined, 
-  CopyOutlined, 
   LoadingOutlined, 
   LinkOutlined, 
   CloseOutlined,
@@ -33,10 +29,16 @@ import {
   SyncOutlined,
   CheckCircleFilled
 } from '@ant-design/icons';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import 'katex/dist/katex.min.css';
 import type { ChatMessage, ChatCompletionRequest } from '../services/api';
 import { getOpenAIModels, chatCompletionsStream } from '../services/api';
 
-const { Text, Title, Paragraph } = Typography;
 const { TextArea } = Input;
 
 interface ExtendedChatMessage extends ChatMessage {
@@ -56,10 +58,12 @@ interface ExtendedChatMessage extends ChatMessage {
   thinking?: boolean;
   steps?: {
     type: 'thought' | 'tool' | 'result';
-    content: string;
+    content?: string;
     status: 'pending' | 'running' | 'completed' | 'error';
     toolName?: string;
     toolArgs?: string;
+    index?: number;
+    displayName?: string;
   }[];
 }
 
@@ -252,8 +256,8 @@ const ModelPlayground: React.FC = () => {
                                     
                                     // 遍历现有的步骤，如果 name 匹配，则更新为 Title
                                     updatedSteps = updatedSteps.map(step => {
-                                        if (step.type === 'tool' && data.info[step.toolName]) {
-                                            return { ...step, displayName: data.info[step.toolName], status: 'completed' }; // 收到 info 说明后端准备执行了，标记为 completed
+                                        if (step.type === 'tool' && step.toolName && data.info[step.toolName]) {
+                                            return { ...step, displayName: data.info[step.toolName], status: 'completed' };
                                         }
                                         return step;
                                     });
@@ -646,14 +650,77 @@ const ModelPlayground: React.FC = () => {
                                     </div>
                                 </div>
                                 {!msg.reasoningCollapsed && (
-                                    <div className="p-3 text-slate-400 font-mono text-xs whitespace-pre-wrap italic animate-in fade-in slide-in-from-top-1 duration-200">
-                                        {msg.reasoning}
+                                    <div className="p-3 text-slate-400 font-mono text-xs italic animate-in fade-in slide-in-from-top-1 duration-200">
+                                        <ReactMarkdown 
+                                            remarkPlugins={[remarkGfm, remarkMath]}
+                                            rehypePlugins={[rehypeKatex]}
+                                            components={{
+                                                code({ node, inline, className, children, ...props }: any) {
+                                                    const match = /language-(\w+)/.exec(className || '');
+                                                    return !inline && match ? (
+                                                        <SyntaxHighlighter
+                                                            style={vscDarkPlus}
+                                                            language={match[1]}
+                                                            PreTag="div"
+                                                            {...props}
+                                                        >
+                                                            {String(children).replace(/\n$/, '')}
+                                                        </SyntaxHighlighter>
+                                                    ) : (
+                                                        <code className={className} {...props}>
+                                                            {children}
+                                                        </code>
+                                                    );
+                                                },
+                                                p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+                                            }}
+                                        >
+                                            {msg.reasoning}
+                                        </ReactMarkdown>
                                     </div>
                                 )}
                             </div>
                         )}
-                        <div className="whitespace-pre-wrap font-mono text-xs">
-                            {msg.content}
+                        <div className="markdown-content text-xs leading-relaxed overflow-x-auto">
+                            <ReactMarkdown 
+                                remarkPlugins={[remarkGfm, remarkMath]}
+                                rehypePlugins={[rehypeKatex]}
+                                components={{
+                                    code({ node, inline, className, children, ...props }: any) {
+                                        const match = /language-(\w+)/.exec(className || '');
+                                        return !inline && match ? (
+                                            <SyntaxHighlighter
+                                                style={vscDarkPlus}
+                                                language={match[1]}
+                                                PreTag="div"
+                                                className="rounded-lg my-2"
+                                                {...props}
+                                            >
+                                                {String(children).replace(/\n$/, '')}
+                                            </SyntaxHighlighter>
+                                        ) : (
+                                            <code className="bg-[#0d1117] px-1.5 py-0.5 rounded text-primary font-mono" {...props}>
+                                                {children}
+                                            </code>
+                                        );
+                                    },
+                                    p: ({ children }) => <p className="mb-4 last:mb-0">{children}</p>,
+                                    h1: ({ children }) => <h1 className="text-lg font-bold mb-4 mt-6 first:mt-0 text-white border-b border-[#233648] pb-2">{children}</h1>,
+                                    h2: ({ children }) => <h2 className="text-base font-bold mb-3 mt-5 first:mt-0 text-white">{children}</h2>,
+                                    h3: ({ children }) => <h3 className="text-sm font-bold mb-2 mt-4 first:mt-0 text-white">{children}</h3>,
+                                    ul: ({ children }) => <ul className="list-disc ml-6 mb-4 space-y-1">{children}</ul>,
+                                    ol: ({ children }) => <ol className="list-decimal ml-6 mb-4 space-y-1">{children}</ol>,
+                                    li: ({ children }) => <li className="mb-1">{children}</li>,
+                                    blockquote: ({ children }) => <blockquote className="border-l-4 border-primary/40 pl-4 py-1 my-4 italic text-slate-400 bg-primary/5 rounded-r">{children}</blockquote>,
+                                    table: ({ children }) => <div className="overflow-x-auto my-4"><table className="w-full border-collapse border border-[#233648]">{children}</table></div>,
+                                    th: ({ children }) => <th className="border border-[#233648] bg-[#1a2632] px-3 py-2 text-left font-bold text-white">{children}</th>,
+                                    td: ({ children }) => <td className="border border-[#233648] px-3 py-2">{children}</td>,
+                                    hr: () => <hr className="my-6 border-[#233648]" />,
+                                    a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{children}</a>
+                                }}
+                            >
+                                {msg.content}
+                            </ReactMarkdown>
                         </div>
                     </div>
                   )}
