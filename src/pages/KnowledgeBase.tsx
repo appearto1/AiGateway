@@ -129,6 +129,13 @@ const KnowledgeBase: React.FC = () => {
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>('');
   const [isLoadingModels, setIsLoadingModels] = useState(false);
+  
+  // Vision Model Settings State
+  const [visionAppToken, setVisionAppToken] = useState('');
+  const [availableVisionModels, setAvailableVisionModels] = useState<string[]>([]);
+  const [selectedVisionModel, setSelectedVisionModel] = useState<string>('');
+  const [isLoadingVisionModels, setIsLoadingVisionModels] = useState(false);
+  const [visionConcurrency, setVisionConcurrency] = useState<number>(10);
 
   const fetchModelsByToken = async (token: string) => {
       if (!token) {
@@ -157,16 +164,50 @@ const KnowledgeBase: React.FC = () => {
       }
   };
 
+  const fetchVisionModelsByToken = async (token: string) => {
+      if (!token) {
+          message.error('请输入应用令牌');
+          return;
+      }
+      try {
+          setIsLoadingVisionModels(true);
+          const res = await getOpenAIModels(token);
+          
+          if (res.data && Array.isArray(res.data)) {
+              const modelList = res.data.map((m: any) => m.id);
+              setAvailableVisionModels(modelList);
+              if (modelList.length > 0 && !modelList.includes(selectedVisionModel)) {
+                  setSelectedVisionModel(modelList[0]);
+              }
+              message.success(`成功加载 ${modelList.length} 个视觉识别模型`);
+          } else {
+              throw new Error('获取授权模型失败：响应数据格式错误');
+          }
+      } catch (e: any) {
+          message.error(e.message || "Token 无效或获取模型失败");
+          setAvailableVisionModels([]);
+      } finally {
+          setIsLoadingVisionModels(false);
+      }
+  };
+
   const handleSaveModelConfig = async () => {
       if (!selectedModel) {
           message.error('请选择模型');
           return;
       }
       
-      const config = {
+      const config: any = {
           apiKey: appToken,
           model: selectedModel
       };
+      
+      // 如果配置了视觉识别模型，添加到配置中
+      if (selectedVisionModel && visionAppToken) {
+          config.visionModel = selectedVisionModel;
+          config.visionApiKey = visionAppToken;
+          config.visionConcurrency = visionConcurrency || 10; // 默认10
+      }
 
       try {
         const res = await fetch(`${API_BASE_URL}/kb/library/update`, {
@@ -201,15 +242,30 @@ const KnowledgeBase: React.FC = () => {
               if (config.apiKey) {
                   fetchModelsByToken(config.apiKey);
               }
+              
+              // 加载视觉识别模型配置
+              setVisionAppToken(config.visionApiKey || '');
+              setSelectedVisionModel(config.visionModel || '');
+              setVisionConcurrency(config.visionConcurrency || 10);
+              if (config.visionApiKey) {
+                  fetchVisionModelsByToken(config.visionApiKey);
+              }
           } catch (e) {
               console.error("Failed to parse model config", e);
               setAppToken('');
               setSelectedModel('');
+              setVisionAppToken('');
+              setSelectedVisionModel('');
+              setVisionConcurrency(10);
           }
       } else {
           setAppToken('');
           setSelectedModel('');
           setAvailableModels([]);
+          setVisionAppToken('');
+          setSelectedVisionModel('');
+          setVisionConcurrency(10);
+          setAvailableVisionModels([]);
       }
       setIsModelModalOpen(true);
   }
@@ -929,9 +985,75 @@ const KnowledgeBase: React.FC = () => {
               />
             </div>
             
+            <div className="border-t border-[#30363d] pt-6">
+              <div className="text-slate-300 text-sm font-semibold mb-4 flex items-center gap-2">
+                <span>视觉识别模型（可选）</span>
+                <Tooltip title="用于识别PDF中的图片内容，如果PDF包含图片，系统会自动使用此模型识别">
+                  <InfoCircleOutlined className="text-slate-500 cursor-help" />
+                </Tooltip>
+              </div>
+              
+              <div className="space-y-4">
+                <div>
+                  <div className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">视觉识别模型令牌</div>
+                  <Space.Compact className="w-full">
+                    <Input.Password 
+                      value={visionAppToken}
+                      onChange={(e) => setVisionAppToken(e.target.value)}
+                      placeholder="appid_secret（可选）"
+                      className="bg-[#161b22] border-[#30363d] text-white placeholder:text-slate-600"
+                    />
+                    <Button 
+                        type="primary" 
+                        icon={<SyncOutlined spin={isLoadingVisionModels} />} 
+                        onClick={() => fetchVisionModelsByToken(visionAppToken)}
+                        className="bg-blue-600 border-blue-600 hover:bg-blue-500"
+                        title="加载视觉识别模型"
+                    />
+                  </Space.Compact>
+                </div>
+                
+                <div>
+                  <div className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">选择视觉识别模型</div>
+                  <Select 
+                    value={selectedVisionModel}
+                    onChange={setSelectedVisionModel}
+                    className="w-full"
+                    options={availableVisionModels.map(m => ({ value: m, label: m }))}
+                    placeholder={availableVisionModels.length > 0 ? "选择视觉识别模型" : "请先输入令牌加载模型"}
+                    disabled={availableVisionModels.length === 0}
+                    allowClear
+                    style={{ backgroundColor: '#161b22' }}
+                    dropdownStyle={{ backgroundColor: '#161b22', border: '1px solid #30363d' }}
+                  />
+                </div>
+                
+                <div>
+                  <div className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-2 flex items-center gap-2">
+                    <span>并发数</span>
+                    <Tooltip title="同时识别图片的最大数量，建议值：5-20。数值越大速度越快，但可能触发API限流">
+                      <InfoCircleOutlined className="text-slate-500 cursor-help" />
+                    </Tooltip>
+                  </div>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={visionConcurrency}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value) || 10;
+                      setVisionConcurrency(Math.max(1, Math.min(100, val)));
+                    }}
+                    placeholder="10"
+                    className="bg-[#161b22] border-[#30363d] text-white placeholder:text-slate-600"
+                  />
+                </div>
+              </div>
+            </div>
+            
             <div className="bg-[#161b22] p-3 rounded border border-[#30363d] text-xs text-slate-400">
                 <InfoCircleOutlined className="mr-2 text-blue-500" />
-                此配置将用于该知识库的所有生成任务（如技能生成、RAG 检索增强生成等）。
+                此配置将用于该知识库的所有生成任务（如技能生成、RAG 检索增强生成等）。如果配置了视觉识别模型，PDF中的图片将自动使用该模型识别。
             </div>
         </div>
       </Modal>
