@@ -2,30 +2,25 @@ import React from 'react';
 import { Table, Button, ConfigProvider } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
+import type { AppUsageLogItem } from '../services/api';
 
-interface DataType {
-  key: string;
-  time: string;
-  id: string;
-  app: string;
-  model: string;
-  status: string;
-  latency: string;
-  tokens: string;
+interface RecentLogsTableProps {
+    data: AppUsageLogItem[];
+    loading?: boolean;
 }
 
-const columns: ColumnsType<DataType> = [
+const columns: ColumnsType<AppUsageLogItem> = [
   {
     title: '时间 (TIME)',
-    dataIndex: 'time',
-    key: 'time',
+    dataIndex: 'request_time',
+    key: 'request_time',
     className: 'bg-[#111a22] text-slate-400 text-xs uppercase tracking-wider font-semibold border-b border-[#233648] px-6 py-4',
     render: (text) => <span className="text-slate-300 font-mono text-xs">{text}</span>,
   },
   {
     title: '请求 ID (REQUEST ID)',
-    dataIndex: 'id',
-    key: 'id',
+    dataIndex: 'request_id',
+    key: 'request_id',
     className: 'bg-[#111a22] text-slate-400 text-xs uppercase tracking-wider font-semibold border-b border-[#233648] px-6 py-4',
     render: (text) => (
         <span className="text-slate-300 font-mono text-xs truncate max-w-[120px] block" title={text}>
@@ -35,10 +30,10 @@ const columns: ColumnsType<DataType> = [
   },
   {
     title: '应用 (APP)',
-    dataIndex: 'app',
-    key: 'app',
+    dataIndex: 'app_name',
+    key: 'app_name',
     className: 'bg-[#111a22] text-slate-400 text-xs uppercase tracking-wider font-semibold border-b border-[#233648] px-6 py-4',
-    render: (text) => <span className="text-white font-medium">{text}</span>,
+    render: (text) => <span className="text-white font-medium">{text || '-'}</span>,
   },
   {
     title: '模型 (MODEL)',
@@ -65,7 +60,7 @@ const columns: ColumnsType<DataType> = [
     align: 'center',
     className: 'bg-[#111a22] text-slate-400 text-xs uppercase tracking-wider font-semibold border-b border-[#233648] px-6 py-4',
     render: (status) => {
-        const isError = status !== '200 OK';
+        const isError = status >= 400;
         const colorClass = isError 
             ? 'bg-red-500/20 text-red-400 border-red-500/30' 
             : 'bg-green-500/20 text-green-400 border-green-500/30';
@@ -77,32 +72,16 @@ const columns: ColumnsType<DataType> = [
     }
   },
   {
-    title: '耗时 (LATENCY)',
-    dataIndex: 'latency',
-    key: 'latency',
-    align: 'right',
-    className: 'bg-[#111a22] text-slate-400 text-xs uppercase tracking-wider font-semibold border-b border-[#233648] px-6 py-4',
-    render: (text) => <span className="text-slate-300 font-mono text-right block">{text}</span>,
-  },
-  {
     title: '消耗 (TOKENS)',
-    dataIndex: 'tokens',
-    key: 'tokens',
+    dataIndex: 'total_tokens',
+    key: 'total_tokens',
     align: 'right',
     className: 'bg-[#111a22] text-slate-400 text-xs uppercase tracking-wider font-semibold border-b border-[#233648] px-6 py-4',
     render: (text) => <span className="text-slate-300 font-mono text-right block">{text}</span>,
   },
 ];
 
-const data: DataType[] = [
-  { key: '1', time: '2023-10-27 14:23:12', id: 'req_8f92a3b1', app: 'ChatBot-Internal', model: 'gpt-4o', status: '200 OK', latency: '245ms', tokens: '1,240' },
-  { key: '2', time: '2023-10-27 14:23:09', id: 'req_7e12c4d5', app: 'Analytics-Worker', model: 'claude-3-5', status: '200 OK', latency: '890ms', tokens: '4,520' },
-  { key: '3', time: '2023-10-27 14:22:55', id: 'req_1a2b3c4d', app: 'Test-Env-App', model: 'gemini-pro', status: '429 Rate Limit', latency: '45ms', tokens: '0' },
-  { key: '4', time: '2023-10-27 14:22:48', id: 'req_9x8y7z6w', app: 'Customer-Support-Bot', model: 'gpt-3.5-turbo', status: '200 OK', latency: '120ms', tokens: '320' },
-  { key: '5', time: '2023-10-27 14:22:15', id: 'req_2m3n4o5p', app: 'Code-Assistant-Plugin', model: 'llama-3-70b', status: '200 OK', latency: '310ms', tokens: '1,890' },
-];
-
-const RecentLogsTable: React.FC = () => {
+const RecentLogsTable: React.FC<RecentLogsTableProps> = ({ data = [], loading = false }) => {
   return (
     <ConfigProvider
         theme={{
@@ -141,7 +120,9 @@ const RecentLogsTable: React.FC = () => {
             <Table 
                 columns={columns} 
                 dataSource={data} 
+                rowKey="id"
                 pagination={false} 
+                loading={loading}
                 rowClassName="hover:bg-[#1f2d3a] transition-colors group text-sm border-b border-[#233648]"
                 className="custom-table"
             />

@@ -267,6 +267,12 @@ export const getAppModelStats = async (appId: string, params?: Omit<AppUsageStat
     return response.data;
 };
 
+// 获取请求趋势
+export const getRequestTrend = async (params?: AppUsageStatsParams) => {
+    const response = await axios.get(`${API_BASE_URL}/app/usage_stats/trend`, { params });
+    return response.data;
+};
+
 // Knowledge Base API
 export interface KnowledgeLibrary {
     id: string;
