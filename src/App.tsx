@@ -7,6 +7,7 @@ import AppsAndTokens from './pages/AppsAndTokens';
 import ModelPlayground from './pages/ModelPlayground';
 import KnowledgeBase from './pages/KnowledgeBase';
 import SkillEditor from './pages/SkillEditor';
+import CallLogs from './pages/CallLogs';
 import { Empty } from 'antd';
 
 // Placeholder component for other routes
@@ -36,7 +37,7 @@ function App() {
           <Route path="skills" element={<KnowledgeBase />} />
           <Route path="skills/:id" element={<SkillEditor />} />
           <Route path="mcp" element={<PlaceholderPage title="MCP 工具集成" />} />
-          <Route path="logs" element={<PlaceholderPage title="调用日志" />} />
+          <Route path="logs" element={<CallLogs />} />
           <Route path="settings/department" element={<PlaceholderPage title="部门管理" />} />
           <Route path="settings/users" element={<PlaceholderPage title="用户管理" />} />
           <Route path="*" element={<PlaceholderPage title="404 Not Found" />} />

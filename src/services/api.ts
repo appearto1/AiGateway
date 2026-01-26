@@ -235,6 +235,7 @@ export interface AppUsageLogsResponse {
 export interface AppUsageStatsParams {
     app_id?: string;
     model?: string;
+    request_id?: string;
     start_time?: string;
     end_time?: string;
     page?: number;
