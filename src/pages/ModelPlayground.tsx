@@ -43,7 +43,7 @@ import rehypeKatex from 'rehype-katex';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import 'katex/dist/katex.min.css';
-import { Document, Packer, Paragraph as DocxParagraph, TextRun } from 'docx';
+import { Document, Packer, Paragraph as DocxParagraph, TextRun, HeadingLevel } from 'docx';
 import { saveAs } from 'file-saver';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
@@ -105,12 +105,82 @@ const ModelPlayground: React.FC = () => {
 
   const exportToWord = async (content: string) => {
     try {
+        const lines = content.split('\n');
+        const children = [];
+        let inCodeBlock = false;
+
+        const processText = (text: string) => {
+            const parts = text.split(/(\*\*.*?\*\*)/g);
+            return parts.map(part => {
+                if (part.startsWith('**') && part.endsWith('**')) {
+                    return new TextRun({
+                        text: part.slice(2, -2),
+                        bold: true,
+                    });
+                }
+                return new TextRun({ text: part });
+            });
+        };
+
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            
+            if (line.trim().startsWith('```')) {
+                inCodeBlock = !inCodeBlock;
+                continue;
+            }
+
+            if (inCodeBlock) {
+                children.push(new DocxParagraph({
+                    children: [new TextRun({
+                        text: line,
+                        font: "Courier New",
+                    })],
+                }));
+                continue;
+            }
+
+            if (line.startsWith('# ')) {
+                children.push(new DocxParagraph({
+                    text: line.replace('# ', ''),
+                    heading: HeadingLevel.HEADING_1,
+                }));
+            } else if (line.startsWith('## ')) {
+                children.push(new DocxParagraph({
+                    text: line.replace('## ', ''),
+                    heading: HeadingLevel.HEADING_2,
+                }));
+            } else if (line.startsWith('### ')) {
+                children.push(new DocxParagraph({
+                    text: line.replace('### ', ''),
+                    heading: HeadingLevel.HEADING_3,
+                }));
+            } else if (line.trim().startsWith('- ') || line.trim().startsWith('* ')) {
+                const cleanLine = line.trim().replace(/^[\-\*]\s+/, '');
+                children.push(new DocxParagraph({
+                    children: processText(cleanLine),
+                    bullet: { level: 0 }
+                }));
+            } else if (/^\d+\.\s/.test(line.trim())) {
+                const cleanLine = line.trim().replace(/^\d+\.\s+/, '');
+                children.push(new DocxParagraph({
+                    children: processText(cleanLine),
+                    bullet: { level: 0 } // Fallback to bullet for simplicity
+                }));
+            } else if (line.trim() !== '') {
+                children.push(new DocxParagraph({
+                    children: processText(line),
+                    spacing: { after: 200 }
+                }));
+            } else {
+                 children.push(new DocxParagraph({ text: "" }));
+            }
+        }
+
         const doc = new Document({
             sections: [{
                 properties: {},
-                children: content.split('\n').map(line => new DocxParagraph({
-                    children: [new TextRun(line)],
-                })),
+                children: children,
             }],
         });
 
@@ -128,23 +198,62 @@ const ModelPlayground: React.FC = () => {
         const element = document.getElementById(`msg-content-${index}`);
         if (!element) return;
 
-        const canvas = await html2canvas(element, {
-            backgroundColor: '#ffffff',
-            scale: 2,
-        });
-        
-        const imgData = canvas.toDataURL('image/png');
-        const pdf = new jsPDF('p', 'mm', 'a4');
-        const imgProps = pdf.getImageProperties(imgData);
-        const pdfWidth = pdf.internal.pageSize.getWidth();
-        const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-        
-        pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-        pdf.save(`AI_Content_${new Date().getTime()}.pdf`);
-        message.success('PDF 文档生成成功');
+        // Clone and style for PDF
+        const clone = element.cloneNode(true) as HTMLElement;
+        clone.style.width = '794px'; // A4 width
+        clone.style.padding = '20px';
+        clone.style.background = '#ffffff';
+        clone.style.color = '#000000';
+        clone.style.overflow = 'visible';
+        clone.style.height = 'auto';
+
+        // Hidden container
+        const container = document.createElement('div');
+        container.style.position = 'fixed';
+        container.style.top = '-10000px';
+        container.style.left = '0';
+        container.style.zIndex = '-100';
+        container.appendChild(clone);
+        document.body.appendChild(container);
+
+        try {
+            const canvas = await html2canvas(clone, {
+                scale: 2,
+                useCORS: true,
+                backgroundColor: '#ffffff',
+                logging: false,
+                windowWidth: 800
+            });
+            
+            const imgData = canvas.toDataURL('image/png');
+            const pdf = new jsPDF('p', 'mm', 'a4');
+            const imgProps = pdf.getImageProperties(imgData);
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+            const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+            
+            // Simple pagination handling
+            const pageHeight = pdf.internal.pageSize.getHeight();
+            let heightLeft = pdfHeight;
+            let position = 0;
+
+            pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, pdfHeight);
+            heightLeft -= pageHeight;
+
+            while (heightLeft >= 0) {
+                position = heightLeft - pdfHeight;
+                pdf.addPage();
+                pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, pdfHeight);
+                heightLeft -= pageHeight;
+            }
+
+            pdf.save(`AI_Content_${new Date().getTime()}.pdf`);
+            message.success('PDF 文档生成成功');
+        } finally {
+            document.body.removeChild(container);
+        }
     } catch (err) {
         console.error(err);
-        message.error('生成 PDF 文档失败');
+        message.error('生成 PDF 文档失败: ' + (err instanceof Error ? err.message : String(err)));
     }
   };
 
@@ -353,17 +462,23 @@ const ModelPlayground: React.FC = () => {
                                     const currentMsg = last[last.length - 1];
                                     let updatedSteps = [...(currentMsg.steps || [])];
                                     
-                                    // 遍历现有的步骤，如果 name 匹配，则更新为 Title
-                                    updatedSteps = updatedSteps.map(step => {
-                                        if (step.type === 'tool' && step.toolName && data.info[step.toolName]) {
-                                            return { ...step, displayName: data.info[step.toolName], status: 'completed' };
-                                        }
-                                        return step;
+                                    // 遍历 info 中的所有工具映射，尝试匹配现有的 steps
+                                    // 注意：后端可能一次性发送所有调用的工具信息
+                                    Object.entries(data.info as Record<string, string>).forEach(([toolName, displayName]) => {
+                                        // 查找所有匹配该 toolName 的 step
+                                        updatedSteps = updatedSteps.map(step => {
+                                            if (step.type === 'tool' && step.toolName === toolName) {
+                                                return { ...step, displayName: displayName, status: 'completed' as const };
+                                            }
+                                            return step;
+                                        });
                                     });
                                     
                                     // 同时也把所有 pending/running 的标记为 completed (作为兜底)
-                                    updatedSteps = updatedSteps.map(s => s.status === 'running' ? { ...s, status: 'completed' } : s);
-
+                                    // 注意：这里可能过于激进，因为可能有些工具还在运行。
+                                    // 只有当接收到 x_tool_info 时，意味着后端已经完成了工具调用并汇总了信息。
+                                    // 但为了安全起见，只更新匹配到的。
+                                    
                                     last[last.length - 1] = {
                                         ...currentMsg,
                                         steps: updatedSteps
@@ -403,18 +518,24 @@ const ModelPlayground: React.FC = () => {
                                     toolCalls.forEach((tc: any) => {
                                         const index = tc.index;
                                         // 查找是否已有该 index 的 step
-                                        // 注意：我们假设 steps 数组的顺序对应 index，或者我们需要在 step 对象里存 index
-                                        // 简单起见，我们查找对应 index 的 step，或者如果没有 index 属性，就假设是追加的
-                                        
-                                        // 更稳健的做法：在 step 里存储 index
-                                        let stepIndex = updatedSteps.findIndex((s: any) => s.index === index);
+                                        // 修复：在多轮对话（Agent模式）中，index 会重置。
+                                        // 我们需要查找最后一个匹配该 index 且状态未完成的 step。
+                                        // 如果之前的 step 已完成，则视为新的一轮，创建新的 step。
+                                        let stepIndex = -1;
+                                        for (let i = updatedSteps.length - 1; i >= 0; i--) {
+                                            if (updatedSteps[i].index === index && updatedSteps[i].status !== 'completed') {
+                                                stepIndex = i;
+                                                break;
+                                            }
+                                        }
                                         
                                         if (stepIndex !== -1) {
                                             // 更新现有 step
                                             const existingStep = updatedSteps[stepIndex];
                                             updatedSteps[stepIndex] = {
                                                 ...existingStep,
-                                                toolName: existingStep.toolName || tc.function?.name, // name 可能只在第一帧出现
+                                                // 只有当 tc.function.name 存在时才更新 toolName，避免后续帧覆盖为 undefined
+                                                toolName: tc.function?.name || existingStep.toolName, 
                                                 toolArgs: (existingStep.toolArgs || '') + (tc.function?.arguments || ''),
                                                 status: 'running'
                                             };
@@ -423,7 +544,7 @@ const ModelPlayground: React.FC = () => {
                                             updatedSteps.push({
                                                 type: 'tool',
                                                 index: index, // 记录 index 以便合并
-                                                toolName: tc.function?.name,
+                                                toolName: tc.function?.name, // 第一帧通常包含 name
                                                 toolArgs: tc.function?.arguments || '',
                                                 status: 'running'
                                             });
