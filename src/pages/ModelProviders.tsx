@@ -44,45 +44,12 @@ import {
     createModelProvider, 
     updateModelProvider, 
     deleteModelProvider,
-    testProviderConnection
+    testProviderConnection,
+    getModelProviderStats
 } from '../services/api';
 import type { ModelProvider as APIModelProvider } from '../services/api';
 
-// Mock Stats Data (Keep this mocked or fetch from another endpoint if available)
-const statsData = [
-  {
-    title: '活跃厂商',
-    value: '8',
-    subValue: '+1',
-    icon: <CloudServerOutlined style={{ fontSize: '24px' }} className="text-primary" />,
-    iconColorClass: 'bg-blue-500/10 border-blue-500/20',
-    subValueClass: 'text-green-500'
-  },
-  {
-    title: '系统健康度',
-    value: '98.5%',
-    subValue: 'Normal',
-    icon: <SafetyCertificateOutlined style={{ fontSize: '24px' }} className="text-green-500" />,
-    iconColorClass: 'bg-green-500/10 border-green-500/20',
-    subValueClass: 'text-green-500'
-  },
-  {
-    title: '平均延迟 (P95)',
-    value: '112',
-    unit: 'ms',
-    icon: <DashboardOutlined style={{ fontSize: '24px' }} className="text-orange-400" />,
-    iconColorClass: 'bg-orange-500/10 border-orange-500/20',
-    subValueClass: ''
-  },
-  {
-    title: '今日调用',
-    value: '45.2k',
-    subValue: 'Since 00:00',
-    icon: <BarChartOutlined style={{ fontSize: '24px' }} className="text-purple-400" />,
-    iconColorClass: 'bg-purple-500/10 border-purple-500/20',
-    subValueClass: 'text-slate-500'
-  }
-];
+// Mock Stats Data removed
 
 interface Vendor {
   id: string;
@@ -145,6 +112,14 @@ const ModelProviders: React.FC = () => {
   const [modalMode, setModalMode] = useState<'add' | 'edit'>('edit');
   const [isTesting, setIsTesting] = useState(false);
   
+  const [stats, setStats] = useState({
+    active_count: 0,
+    total_count: 0,
+    health: '0%',
+    avg_latency: 0,
+    today_calls: 0
+  });
+
   // 搜索和过滤状态
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | number>('all');
@@ -162,9 +137,19 @@ const ModelProviders: React.FC = () => {
   const fetchVendors = async (name?: string, status?: any) => {
     try {
         console.log("Fetching vendors with:", { name, status });
-        const res = await getModelProviders(name, status === 'all' ? undefined : status);
-        if (res.code === 200 && Array.isArray(res.data)) {
-            const data: APIModelProvider[] = res.data;
+        
+        // Parallel fetch for vendors and stats
+        const [vendorsRes, statsRes] = await Promise.all([
+            getModelProviders(name, status === 'all' ? undefined : status),
+            getModelProviderStats()
+        ]);
+
+        if (statsRes.code === 200) {
+            setStats(statsRes.data);
+        }
+
+        if (vendorsRes.code === 200 && Array.isArray(vendorsRes.data)) {
+            const data: APIModelProvider[] = vendorsRes.data;
             const mapped: Vendor[] = data.map(p => {
                 const name = p.name || 'Unknown';
                 // 根据名字生成稳定的背景色
@@ -440,22 +425,56 @@ const ModelProviders: React.FC = () => {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-        {statsData.map((stat, index) => (
-            <StatusCard 
-                key={index}
-                title={stat.title}
-                value={
-                    <div className="flex items-end gap-2">
-                        <span>{stat.value}</span>
-                        {stat.unit && <span className="text-sm font-normal text-slate-400 mb-1">{stat.unit}</span>}
-                        {stat.subValue && <span className={`text-xs font-normal mb-1 ${stat.subValueClass}`}>{stat.subValue}</span>}
-                    </div>
-                }
-                icon={stat.icon}
-                iconColorClass={stat.iconColorClass}
-                borderColorClass={stat.iconColorClass}
-            />
-        ))}
+        <StatusCard 
+            title="活跃厂商"
+            value={
+                <div className="flex items-end gap-2">
+                    <span>{stats.active_count}</span>
+                    <span className="text-xs font-normal mb-1 text-green-500">
+                        / {stats.total_count} Total
+                    </span>
+                </div>
+            }
+            icon={<CloudServerOutlined style={{ fontSize: '24px' }} className="text-primary" />}
+            iconColorClass="bg-blue-500/10 border-blue-500/20"
+            borderColorClass="bg-blue-500/10 border-blue-500/20"
+        />
+        <StatusCard 
+            title="系统健康度"
+            value={
+                <div className="flex items-end gap-2">
+                    <span>{stats.health}</span>
+                    <span className="text-xs font-normal mb-1 text-green-500">Normal</span>
+                </div>
+            }
+            icon={<SafetyCertificateOutlined style={{ fontSize: '24px' }} className="text-green-500" />}
+            iconColorClass="bg-green-500/10 border-green-500/20"
+            borderColorClass="bg-green-500/10 border-green-500/20"
+        />
+        <StatusCard 
+            title="平均延迟"
+            value={
+                <div className="flex items-end gap-2">
+                    <span>{stats.avg_latency}</span>
+                    <span className="text-sm font-normal text-slate-400 mb-1">ms</span>
+                </div>
+            }
+            icon={<DashboardOutlined style={{ fontSize: '24px' }} className="text-orange-400" />}
+            iconColorClass="bg-orange-500/10 border-orange-500/20"
+            borderColorClass="bg-orange-500/10 border-orange-500/20"
+        />
+        <StatusCard 
+            title="今日调用"
+            value={
+                <div className="flex items-end gap-2">
+                    <span>{stats.today_calls > 1000 ? (stats.today_calls/1000).toFixed(1) + 'k' : stats.today_calls}</span>
+                    <span className="text-xs font-normal mb-1 text-slate-500">Since 00:00</span>
+                </div>
+            }
+            icon={<BarChartOutlined style={{ fontSize: '24px' }} className="text-purple-400" />}
+            iconColorClass="bg-purple-500/10 border-purple-500/20"
+            borderColorClass="bg-purple-500/10 border-purple-500/20"
+        />
       </div>
 
       {/* Search & Filter */}

@@ -77,6 +77,11 @@ export const testProviderConnection = async (baseUrl: string, apiKey: string, on
     return response.data;
 };
 
+export const getModelProviderStats = async () => {
+    const response = await axios.get(`${API_BASE_URL}/provider/stats`);
+    return response.data;
+};
+
 export const getOpenAIModels = async (token?: string) => {
     const headers: Record<string, string> = {};
     if (token) {
