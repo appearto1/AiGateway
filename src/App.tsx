@@ -10,6 +10,8 @@ import SkillEditor from './pages/SkillEditor';
 import CallLogs from './pages/CallLogs';
 import { Empty } from 'antd';
 
+import McpManagement from './pages/McpManagement';
+
 // Placeholder component for other routes
 const PlaceholderPage: React.FC<{ title: string }> = ({ title }) => (
   <div className="flex flex-col items-center justify-center h-[60vh] text-slate-400">
@@ -36,7 +38,7 @@ function App() {
           <Route path="playground" element={<ModelPlayground />} />
           <Route path="skills" element={<KnowledgeBase />} />
           <Route path="skills/:id" element={<SkillEditor />} />
-          <Route path="mcp" element={<PlaceholderPage title="MCP 工具集成" />} />
+          <Route path="mcp" element={<McpManagement />} />
           <Route path="logs" element={<CallLogs />} />
           <Route path="settings/department" element={<PlaceholderPage title="部门管理" />} />
           <Route path="settings/users" element={<PlaceholderPage title="用户管理" />} />
