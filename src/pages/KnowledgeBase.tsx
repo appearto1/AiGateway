@@ -427,7 +427,22 @@ const KnowledgeBase: React.FC = () => {
     }
   };
 
+  const isModelConfigured = (lib: Library | undefined) => {
+    if (!lib || !lib.modelConfig) return false;
+    try {
+        const config = JSON.parse(lib.modelConfig);
+        return !!(config.apiKey && config.model);
+    } catch (e) {
+        return false;
+    }
+  };
+
   const openCreateModal = () => {
+      if (activeLibrary && !isModelConfigured(activeLibrary)) {
+          message.warning('请先配置该知识库的模型设置，AI 将使用该配置生成技能内容');
+          openModelSettings();
+          return;
+      }
       setModalMode('create');
       setCurrentSkill(null);
       setDescription('');
@@ -436,6 +451,11 @@ const KnowledgeBase: React.FC = () => {
   }
 
   const openRegenerateModal = (skill: Skill) => {
+      if (activeLibrary && !isModelConfigured(activeLibrary)) {
+          message.warning('请先配置该知识库的模型设置，AI 将使用该配置重新生成技能内容');
+          openModelSettings();
+          return;
+      }
       setModalMode('regenerate');
       setCurrentSkill(skill);
       setDescription(skill.description);
@@ -588,13 +608,31 @@ const KnowledgeBase: React.FC = () => {
               </p>
             </div>
             <div className="text-right">
-              <div className="flex gap-6 text-slate-400 text-sm">
+              <div className="flex gap-3 text-slate-400 text-sm items-center">
+                {activeLibrary && !isModelConfigured(activeLibrary) && (
+                    <div className="flex items-center gap-1.5 px-3 py-1 bg-amber-500/10 border border-amber-500/20 rounded-full text-amber-500 text-xs animate-pulse">
+                        <ExclamationCircleOutlined />
+                        <span>未配置生成模型</span>
+                    </div>
+                )}
+                {activeLibrary && isModelConfigured(activeLibrary) && (
+                    <div className="flex items-center gap-1.5 px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-full text-emerald-500 text-xs">
+                        <RobotOutlined />
+                        <span>已配置: {(() => {
+                            try {
+                                return JSON.parse(activeLibrary.modelConfig!).model;
+                            } catch(e) {
+                                return '未知模型';
+                            }
+                        })()}</span>
+                    </div>
+                )}
                 {activeLibrary && (
                     <Tooltip title="配置模型设置">
                         <Button 
                             type="text" 
-                            icon={<SettingOutlined className="text-xl" />} 
-                            className="text-slate-400 hover:text-blue-400 flex items-center justify-center h-auto p-2"
+                            icon={<SettingOutlined className={`text-xl ${!isModelConfigured(activeLibrary) ? 'text-amber-500' : 'text-slate-400'}`} />} 
+                            className="hover:text-blue-400 flex items-center justify-center h-auto p-2"
                             onClick={openModelSettings}
                         />
                     </Tooltip>

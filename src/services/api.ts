@@ -32,7 +32,7 @@ export interface ModelProvider {
 
 export interface ChatMessage {
     role: 'user' | 'assistant' | 'system';
-    content: string;
+    content: string | any[];
 }
 
 export interface ChatCompletionRequest {
@@ -42,6 +42,7 @@ export interface ChatCompletionRequest {
     temperature?: number;
     top_p?: number;
     max_tokens?: number;
+    max_completion_tokens?: number;
 }
 
 export const getModelProviders = async (name?: string, status?: number) => {

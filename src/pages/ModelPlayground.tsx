@@ -9,7 +9,10 @@ import {
   Modal,
   ConfigProvider,
   theme,
-  message
+  message,
+  Switch,
+  Upload,
+  Image as AntdImage
 } from 'antd';
 import { 
   SendOutlined,
@@ -27,7 +30,11 @@ import {
   CloseOutlined,
   InfoCircleOutlined,
   SyncOutlined,
-  CheckCircleFilled
+  CheckCircleFilled,
+  FileWordOutlined,
+  FilePdfOutlined,
+  EditOutlined,
+  PictureOutlined
 } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -36,6 +43,10 @@ import rehypeKatex from 'rehype-katex';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import 'katex/dist/katex.min.css';
+import { Document, Packer, Paragraph as DocxParagraph, TextRun } from 'docx';
+import { saveAs } from 'file-saver';
+import { jsPDF } from 'jspdf';
+import html2canvas from 'html2canvas';
 import type { ChatMessage, ChatCompletionRequest } from '../services/api';
 import { getOpenAIModels, chatCompletionsStream } from '../services/api';
 
@@ -82,11 +93,86 @@ const ModelPlayground: React.FC = () => {
   // Hyperparameters
   const [temperature, setTemperature] = useState(0.7);
   const [topP, setTopP] = useState(1.0);
-  const [maxTokens, setMaxTokens] = useState(2048);
+  const [maxTokens, setMaxTokens] = useState(4096);
   const [customParams, setCustomParams] = useState('{\n  "frequency_penalty": 0,\n  "presence_penalty": 0\n}');
   const [isJsonValid, setIsJsonValid] = useState(true);
   
+  // New States
+  const [isWritingMode, setIsWritingMode] = useState(false);
+  const [uploadedImages, setUploadedImages] = useState<string[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  const exportToWord = async (content: string) => {
+    try {
+        const doc = new Document({
+            sections: [{
+                properties: {},
+                children: content.split('\n').map(line => new DocxParagraph({
+                    children: [new TextRun(line)],
+                })),
+            }],
+        });
+
+        const blob = await Packer.toBlob(doc);
+        saveAs(blob, `AI_Content_${new Date().getTime()}.docx`);
+        message.success('Word 文档生成成功');
+    } catch (err) {
+        console.error(err);
+        message.error('生成 Word 文档失败');
+    }
+  };
+
+  const exportToPDF = async (index: number) => {
+    try {
+        const element = document.getElementById(`msg-content-${index}`);
+        if (!element) return;
+
+        const canvas = await html2canvas(element, {
+            backgroundColor: '#ffffff',
+            scale: 2,
+        });
+        
+        const imgData = canvas.toDataURL('image/png');
+        const pdf = new jsPDF('p', 'mm', 'a4');
+        const imgProps = pdf.getImageProperties(imgData);
+        const pdfWidth = pdf.internal.pageSize.getWidth();
+        const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+        
+        pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+        pdf.save(`AI_Content_${new Date().getTime()}.pdf`);
+        message.success('PDF 文档生成成功');
+    } catch (err) {
+        console.error(err);
+        message.error('生成 PDF 文档失败');
+    }
+  };
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+
+    for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        if (!file.type.startsWith('image/')) {
+            message.warning(`${file.name} 不是有效的图片文件`);
+            continue;
+        }
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const base64 = event.target?.result as string;
+            setUploadedImages(prev => [...prev, base64]);
+        };
+        reader.readAsDataURL(file);
+    }
+    // Reset input
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const removeImage = (idx: number) => {
+    setUploadedImages(prev => prev.filter((_, i) => i !== idx));
+  };
 
   const fetchConfig = async () => {
     // 优先尝试从 localStorage 获取 token 加载模型
@@ -154,16 +240,29 @@ const ModelPlayground: React.FC = () => {
   };
 
   const handleSendMessage = async () => {
-    if (!prompt.trim() || isLoading) return;
+    if ((!prompt.trim() && uploadedImages.length === 0) || isLoading) return;
     
+    // Construct content for user message
+    let userContent: string | any[] = prompt;
+    if (uploadedImages.length > 0) {
+        userContent = [
+            { type: 'text', text: prompt || '分析这张图片' },
+            ...uploadedImages.map(img => ({
+                type: 'image_url',
+                image_url: { url: img }
+            }))
+        ];
+    }
+
     const userMsg: ExtendedChatMessage = {
         role: 'user',
-        content: prompt,
+        content: userContent,
         time: new Date().toLocaleTimeString()
     };
     
     setMessages(prev => [...prev, userMsg]);
     setPrompt('');
+    setUploadedImages([]); // Clear images after sending
     setIsLoading(true);
 
     const assistantMsg: ExtendedChatMessage = {
@@ -180,7 +279,7 @@ const ModelPlayground: React.FC = () => {
         
         const payloadMessages: ChatMessage[] = [];
         if (systemPrompt) payloadMessages.push({ role: 'system', content: systemPrompt });
-        payloadMessages.push(...chatHistory, { role: 'user', content: prompt });
+        payloadMessages.push(...chatHistory, { role: 'user', content: userContent });
 
         let extraParams = {};
         try {
@@ -197,7 +296,7 @@ const ModelPlayground: React.FC = () => {
             messages: payloadMessages,
             temperature,
             top_p: topP,
-            max_tokens: maxTokens,
+            ...(maxTokens > 0 ? { max_tokens: maxTokens } : {}),
             stream: true,
             ...extraParams
         } as ChatCompletionRequest, appToken);
@@ -484,14 +583,20 @@ const ModelPlayground: React.FC = () => {
             <div>
               <div className="flex justify-between mb-1">
                 <span className="text-slate-400 text-xs">Max Tokens (最大长度)</span>
-                <span className="text-slate-400 bg-[#1a2632] px-1.5 rounded text-[10px] font-mono border border-[#334155]">{maxTokens}</span>
+                <span className="text-slate-400 bg-[#1a2632] px-1.5 rounded text-[10px] font-mono border border-[#334155]">
+                  {maxTokens === 0 ? '不限制' : maxTokens}
+                </span>
               </div>
               <Slider 
-                min={1} max={8192} step={1}
+                min={0} max={100000} step={1}
                 value={maxTokens}
                 onChange={setMaxTokens}
                 tooltip={{ open: false }} className="m-0" 
               />
+              <div className="flex justify-between mt-1">
+                <span className="text-[10px] text-slate-500">不限</span>
+                <span className="text-[10px] text-slate-500">100K</span>
+              </div>
             </div>
 
             <div className="h-px bg-[#233648] my-4"></div>
@@ -681,47 +786,87 @@ const ModelPlayground: React.FC = () => {
                                 )}
                             </div>
                         )}
-                        <div className="markdown-content text-xs leading-relaxed overflow-x-auto">
-                            <ReactMarkdown 
-                                remarkPlugins={[remarkGfm, remarkMath]}
-                                rehypePlugins={[rehypeKatex]}
-                                components={{
-                                    code({ node, inline, className, children, ...props }: any) {
-                                        const match = /language-(\w+)/.exec(className || '');
-                                        return !inline && match ? (
-                                            <SyntaxHighlighter
-                                                style={vscDarkPlus}
-                                                language={match[1]}
-                                                PreTag="div"
-                                                className="rounded-lg my-2"
-                                                {...props}
-                                            >
-                                                {String(children).replace(/\n$/, '')}
-                                            </SyntaxHighlighter>
-                                        ) : (
-                                            <code className="bg-[#0d1117] px-1.5 py-0.5 rounded text-primary font-mono" {...props}>
-                                                {children}
-                                            </code>
-                                        );
-                                    },
-                                    p: ({ children }) => <p className="mb-4 last:mb-0">{children}</p>,
-                                    h1: ({ children }) => <h1 className="text-lg font-bold mb-4 mt-6 first:mt-0 text-white border-b border-[#233648] pb-2">{children}</h1>,
-                                    h2: ({ children }) => <h2 className="text-base font-bold mb-3 mt-5 first:mt-0 text-white">{children}</h2>,
-                                    h3: ({ children }) => <h3 className="text-sm font-bold mb-2 mt-4 first:mt-0 text-white">{children}</h3>,
-                                    ul: ({ children }) => <ul className="list-disc ml-6 mb-4 space-y-1">{children}</ul>,
-                                    ol: ({ children }) => <ol className="list-decimal ml-6 mb-4 space-y-1">{children}</ol>,
-                                    li: ({ children }) => <li className="mb-1">{children}</li>,
-                                    blockquote: ({ children }) => <blockquote className="border-l-4 border-primary/40 pl-4 py-1 my-4 italic text-slate-400 bg-primary/5 rounded-r">{children}</blockquote>,
-                                    table: ({ children }) => <div className="overflow-x-auto my-4"><table className="w-full border-collapse border border-[#233648]">{children}</table></div>,
-                                    th: ({ children }) => <th className="border border-[#233648] bg-[#1a2632] px-3 py-2 text-left font-bold text-white">{children}</th>,
-                                    td: ({ children }) => <td className="border border-[#233648] px-3 py-2">{children}</td>,
-                                    hr: () => <hr className="my-6 border-[#233648]" />,
-                                    a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{children}</a>
-                                }}
-                            >
-                                {msg.content}
-                            </ReactMarkdown>
-                        </div>
+
+                        {/* User content with images support */}
+                        {msg.role === 'user' && Array.isArray(msg.content) ? (
+                            <div className="space-y-3">
+                                <div className="text-white">{msg.content.find((c: any) => c.type === 'text')?.text}</div>
+                                <div className="flex flex-wrap gap-2">
+                                    {msg.content.filter((c: any) => c.type === 'image_url').map((img: any, iIdx: number) => (
+                                        <AntdImage 
+                                            key={iIdx} 
+                                            src={img.image_url.url} 
+                                            width={100} 
+                                            className="rounded-lg border border-white/20"
+                                        />
+                                    ))}
+                                </div>
+                            </div>
+                        ) : (
+                            <div id={`msg-content-${idx}`} className="markdown-content text-xs leading-relaxed overflow-x-auto">
+                                <ReactMarkdown 
+                                    remarkPlugins={[remarkGfm, remarkMath]}
+                                    rehypePlugins={[rehypeKatex]}
+                                    components={{
+                                        code({ node, inline, className, children, ...props }: any) {
+                                            const match = /language-(\w+)/.exec(className || '');
+                                            return !inline && match ? (
+                                                <SyntaxHighlighter
+                                                    style={vscDarkPlus}
+                                                    language={match[1]}
+                                                    PreTag="div"
+                                                    className="rounded-lg my-2"
+                                                    {...props}
+                                                >
+                                                    {String(children).replace(/\n$/, '')}
+                                                </SyntaxHighlighter>
+                                            ) : (
+                                                <code className="bg-[#0d1117] px-1.5 py-0.5 rounded text-primary font-mono" {...props}>
+                                                    {children}
+                                                </code>
+                                            );
+                                        },
+                                        p: ({ children }) => <p className="mb-4 last:mb-0">{children}</p>,
+                                        h1: ({ children }) => <h1 className="text-lg font-bold mb-4 mt-6 first:mt-0 text-white border-b border-[#233648] pb-2">{children}</h1>,
+                                        h2: ({ children }) => <h2 className="text-base font-bold mb-3 mt-5 first:mt-0 text-white">{children}</h2>,
+                                        h3: ({ children }) => <h3 className="text-sm font-bold mb-2 mt-4 first:mt-0 text-white">{children}</h3>,
+                                        ul: ({ children }) => <ul className="list-disc ml-6 mb-4 space-y-1">{children}</ul>,
+                                        ol: ({ children }) => <ol className="list-decimal ml-6 mb-4 space-y-1">{children}</ol>,
+                                        li: ({ children }) => <li className="mb-1">{children}</li>,
+                                        blockquote: ({ children }) => <blockquote className="border-l-4 border-primary/40 pl-4 py-1 my-4 italic text-slate-400 bg-primary/5 rounded-r">{children}</blockquote>,
+                                        table: ({ children }) => <div className="overflow-x-auto my-4"><table className="w-full border-collapse border border-[#233648]">{children}</table></div>,
+                                        th: ({ children }) => <th className="border border-[#233648] bg-[#1a2632] px-3 py-2 text-left font-bold text-white">{children}</th>,
+                                        td: ({ children }) => <td className="border border-[#233648] px-3 py-2">{children}</td>,
+                                        hr: () => <hr className="my-6 border-[#233648]" />,
+                                        a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{children}</a>
+                                    }}
+                                >
+                                    {typeof msg.content === 'string' ? msg.content : ''}
+                                </ReactMarkdown>
+                            </div>
+                        )}
+                        
+                        {/* Export Buttons in Writing Mode */}
+                        {msg.role === 'assistant' && isWritingMode && msg.content && !msg.thinking && (
+                            <div className="flex gap-2 mt-4 pt-3 border-t border-[#233648]/50">
+                                <Button 
+                                    size="small" 
+                                    icon={<FileWordOutlined />} 
+                                    onClick={() => exportToWord(msg.content as string)}
+                                    className="bg-blue-600/20 text-blue-400 border-blue-600/30 hover:bg-blue-600/30"
+                                >
+                                    导出 Word
+                                </Button>
+                                <Button 
+                                    size="small" 
+                                    icon={<FilePdfOutlined />} 
+                                    onClick={() => exportToPDF(idx)}
+                                    className="bg-red-600/20 text-red-400 border-red-600/30 hover:bg-red-600/30"
+                                >
+                                    导出 PDF
+                                </Button>
+                            </div>
+                        )}
                     </div>
                   )}
                 </div>
@@ -782,6 +927,26 @@ const ModelPlayground: React.FC = () => {
 
         {/* Input Area */}
         <div className="p-6 pt-0 mt-auto">
+          {uploadedImages.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-2 p-2 bg-[#1a2632] border border-[#233648] rounded-lg">
+                {uploadedImages.map((img, idx) => (
+                    <div key={idx} className="relative group">
+                        <AntdImage 
+                            src={img} 
+                            width={60} 
+                            height={60} 
+                            className="rounded object-cover border border-white/10"
+                        />
+                        <button 
+                            onClick={() => removeImage(idx)}
+                            className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full size-4 flex items-center justify-center text-[10px] opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                            <CloseOutlined />
+                        </button>
+                    </div>
+                ))}
+            </div>
+          )}
           <div className="bg-[#1a2632] border border-[#233648] rounded-xl overflow-hidden shadow-xl shadow-black/20 focus-within:border-primary/50 transition-colors">
             <TextArea 
               value={prompt}
@@ -795,10 +960,35 @@ const ModelPlayground: React.FC = () => {
               autoSize={{ minRows: 3, maxRows: 8 }}
               className="bg-transparent border-none text-white placeholder-slate-500 focus:ring-0 resize-none p-4 text-sm"
             />
+            <input 
+                type="file" 
+                ref={fileInputRef} 
+                onChange={handleImageUpload} 
+                className="hidden" 
+                accept="image/*" 
+                multiple 
+            />
             <div className="flex justify-between items-center px-3 py-2 bg-[#1a2632] border-t border-[#233648]/50">
-              <div className="flex gap-1">
-                <Button type="text" icon={<PaperClipOutlined />} className="text-slate-400 hover:text-white text-xs">附件</Button>
-                <Button type="text" icon={<CodeOutlined />} className="text-slate-400 hover:text-white text-xs">变量模板</Button>
+              <div className="flex gap-2 items-center">
+                <Button 
+                    type="text" 
+                    icon={<PictureOutlined />} 
+                    className="text-slate-400 hover:text-white text-xs"
+                    onClick={() => fileInputRef.current?.click()}
+                >
+                    图片
+                </Button>
+                <div className="w-px h-4 bg-[#233648] mx-1"></div>
+                <div className="flex items-center gap-2 px-2 py-1 rounded-md hover:bg-white/5 transition-colors cursor-pointer" onClick={() => setIsWritingMode(!isWritingMode)}>
+                  <EditOutlined className={isWritingMode ? 'text-primary' : 'text-slate-500'} />
+                  <span className={`text-[11px] font-medium ${isWritingMode ? 'text-white' : 'text-slate-500'}`}>写作模式</span>
+                  <Switch 
+                    size="small"
+                    checked={isWritingMode} 
+                    onChange={setIsWritingMode} 
+                    className={isWritingMode ? 'bg-primary' : 'bg-slate-700'}
+                  />
+                </div>
               </div>
               <div className="flex items-center gap-3">
                 <span className="text-[10px] text-slate-500 hidden sm:inline-block">使用 Enter 发送</span>
