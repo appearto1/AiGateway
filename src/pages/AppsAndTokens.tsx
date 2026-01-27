@@ -39,9 +39,9 @@ import {
 } from '@ant-design/icons';
 import { 
   getApps, createApp, updateApp, rotateAppSecret, deleteApp, getModelProviders, getAppModelStats,
-  getKBForApp
+  getKBForApp, getMcpServers
 } from '../services/api';
-import type { AppData, ModelProvider, AppUsageStatsByModel, KnowledgeLibrary, KnowledgeSkill } from '../services/api';
+import type { AppData, ModelProvider, AppUsageStatsByModel, KnowledgeLibrary, KnowledgeSkill, McpServer } from '../services/api';
 import dayjs, { type Dayjs } from 'dayjs';
 
 const { Text } = Typography;
@@ -70,6 +70,9 @@ const AppsAndTokens: React.FC = () => {
   // Knowledge Base State
   const [kbTreeData, setKbTreeData] = useState<any[]>([]);
   const [isAgentEnabled, setIsAgentEnabled] = useState(false);
+  
+  // MCP State
+  const [mcpServers, setMcpServers] = useState<McpServer[]>([]);
 
   // Combine models from all active providers
   const allAvailableModels = modelProviders.reduce((acc: any[], provider) => {
@@ -147,10 +150,22 @@ const AppsAndTokens: React.FC = () => {
     }
   };
 
+  const fetchMcpServers = async () => {
+    try {
+        const res = await getMcpServers();
+        if (res.code === 200) {
+            setMcpServers(res.data.list || []);
+        }
+    } catch (error) {
+        console.error("Failed to fetch MCP servers", error);
+    }
+  };
+
   useEffect(() => {
     fetchApps();
     fetchModelProviders();
     fetchKnowledgeData();
+    fetchMcpServers();
   }, [searchName, filterStatus]);
 
   const handleEdit = (app: AppData) => {
@@ -159,6 +174,7 @@ const AppsAndTokens: React.FC = () => {
     // Parse configs
     let selectedModels: string[] = [];
     let selectedKbs: string[] = [];
+    let selectedMcps: string[] = [];
     try {
         if (app.model_config) selectedModels = JSON.parse(app.model_config);
         if (app.kb_config) {
@@ -167,6 +183,7 @@ const AppsAndTokens: React.FC = () => {
         } else {
             setIsAgentEnabled(false);
         }
+        if (app.mcp_config) selectedMcps = JSON.parse(app.mcp_config);
     } catch (e) {
         console.error("Failed to parse config", e);
     }
@@ -180,7 +197,8 @@ const AppsAndTokens: React.FC = () => {
       daily_token_limit: app.daily_token_limit,
       qps_limit: app.qps_limit,
       selected_models: selectedModels,
-      selected_kbs: selectedKbs
+      selected_kbs: selectedKbs,
+      selected_mcps: selectedMcps
     });
     setIsModalOpen(true);
   };
@@ -195,7 +213,8 @@ const AppsAndTokens: React.FC = () => {
         daily_token_limit: 500000,
         qps_limit: 10,
         selected_models: [],
-        selected_kbs: []
+        selected_kbs: [],
+        selected_mcps: []
     });
     setIsModalOpen(true);
   };
@@ -218,7 +237,7 @@ const AppsAndTokens: React.FC = () => {
             status: values.status ? 0 : 1,
             model_config: JSON.stringify(values.selected_models || []),
             kb_config: JSON.stringify(finalKbs),
-            mcp_config: JSON.stringify([]),
+            mcp_config: JSON.stringify(values.selected_mcps || []),
         };
 
         let res;
@@ -818,6 +837,31 @@ const AppsAndTokens: React.FC = () => {
                         </Form.Item>
                         <p className="text-slate-500 text-[10px] mt-2 italic">
                             * 仅显示目前已启用的模型厂商所支持的模型。
+                        </p>
+                    </div>
+
+                    {/* Section: MCP Services */}
+                    <div className="bg-[#111a22]/50 border border-[#233648] rounded-xl p-6 space-y-4">
+                        <div className="flex items-center gap-2 mb-2">
+                            <ThunderboltFilled className="text-primary" />
+                            <span className="text-white font-bold">MCP 工具服务</span>
+                        </div>
+                        
+                        <Form.Item name="selected_mcps" label={<span className="text-slate-400 text-xs font-bold uppercase tracking-wider">选择 MCP 服务</span>} className="mb-0">
+                            <Select
+                                mode="multiple"
+                                placeholder="选择允许此应用使用的 MCP 服务..."
+                                className="w-full"
+                                options={mcpServers.map(s => ({
+                                    label: `${s.name} (${s.type})`,
+                                    value: s.id
+                                }))}
+                                maxTagCount="responsive"
+                                dropdownStyle={{ backgroundColor: '#1a2632' }}
+                            />
+                        </Form.Item>
+                        <p className="text-slate-500 text-[10px] mt-2 italic">
+                            * 选择的 MCP 服务将在模型测试时可用，模型可以调用这些服务提供的工具。
                         </p>
                     </div>
                 </Form>

@@ -468,7 +468,7 @@ const ModelPlayground: React.FC = () => {
                                         // 查找所有匹配该 toolName 的 step
                                         updatedSteps = updatedSteps.map(step => {
                                             if (step.type === 'tool' && step.toolName === toolName) {
-                                                return { ...step, displayName: displayName, status: 'completed' as const };
+                                                return { ...step, displayName: displayName };
                                             }
                                             return step;
                                         });

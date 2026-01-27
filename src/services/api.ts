@@ -308,3 +308,56 @@ export const getKBForApp = async () => {
     const response = await axios.get(`${API_BASE_URL}/app/kb_data`);
     return response.data;
 };
+
+// MCP API
+export interface McpServer {
+    id: string;
+    name: string;
+    type: 'stdio' | 'sse' | 'streamable_http';
+    command: string;
+    args: string; // JSON string
+    env: string; // JSON string
+    url: string;
+    description: string;
+    status: string;
+    version: string;
+    icon: string;
+    created_time?: string;
+}
+
+export const getMcpServers = async (name?: string, type?: string) => {
+    const params: any = {};
+    if (name) params.name = name;
+    if (type) params.type = type;
+    const response = await axios.get(`${API_BASE_URL}/mcp/list`, { params });
+    return response.data;
+};
+
+export const createMcpServer = async (data: Partial<McpServer>) => {
+    const response = await axios.post(`${API_BASE_URL}/mcp/add`, data);
+    return response.data;
+};
+
+export const updateMcpServer = async (data: Partial<McpServer>) => {
+    const response = await axios.post(`${API_BASE_URL}/mcp/update`, data);
+    return response.data;
+};
+
+export const deleteMcpServer = async (id: string) => {
+    const response = await axios.post(`${API_BASE_URL}/mcp/delete`, { id });
+    return response.data;
+};
+
+export const inspectMcpServer = async (id: string) => {
+    const response = await axios.get(`${API_BASE_URL}/mcp/inspect/${id}`);
+    return response.data;
+};
+
+export const executeMcpTool = async (serverId: string, toolName: string, args: any) => {
+    const response = await axios.post(`${API_BASE_URL}/mcp/execute`, {
+        server_id: serverId,
+        tool_name: toolName,
+        arguments: args
+    });
+    return response.data;
+};
