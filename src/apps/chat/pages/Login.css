@@ -1,0 +1,33 @@
+.chat-login-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    padding: 20px;
+}
+
+.chat-login-card {
+    width: 100%;
+    max-width: 400px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+    border-radius: 12px;
+}
+
+.chat-login-header {
+    text-align: center;
+    margin-bottom: 32px;
+}
+
+.chat-login-header h1 {
+    margin: 0 0 8px 0;
+    font-size: 28px;
+    font-weight: 600;
+    color: #1a1a1a;
+}
+
+.chat-login-header p {
+    margin: 0;
+    color: #666;
+    font-size: 14px;
+}
