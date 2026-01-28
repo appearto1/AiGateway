@@ -8,6 +8,9 @@ import ModelPlayground from './pages/ModelPlayground';
 import KnowledgeBase from './pages/KnowledgeBase';
 import SkillEditor from './pages/SkillEditor';
 import CallLogs from './pages/CallLogs';
+import RoleManagement from './pages/RoleManagement';
+import OrgManagement from './pages/OrgManagement';
+import MenuManagement from './pages/MenuManagement';
 import { Empty } from 'antd';
 
 import McpManagement from './pages/McpManagement';
@@ -40,7 +43,10 @@ function App() {
           <Route path="skills/:id" element={<SkillEditor />} />
           <Route path="mcp" element={<McpManagement />} />
           <Route path="logs" element={<CallLogs />} />
-          <Route path="settings/department" element={<PlaceholderPage title="部门管理" />} />
+          <Route path="roles" element={<RoleManagement />} />
+          <Route path="menus" element={<MenuManagement />} />
+          <Route path="settings/org" element={<OrgManagement />} />
+          <Route path="settings/department" element={<Navigate to="/settings/org" replace />} />
           <Route path="settings/users" element={<PlaceholderPage title="用户管理" />} />
           <Route path="*" element={<PlaceholderPage title="404 Not Found" />} />
         </Route>

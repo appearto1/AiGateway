@@ -10,7 +10,9 @@ import {
   FileTextOutlined,
   ApartmentOutlined,
   UserOutlined,
-  DeploymentUnitOutlined
+  DeploymentUnitOutlined,
+  SafetyCertificateOutlined,
+  ClusterOutlined
 } from '@ant-design/icons';
 
 const { Sider } = Layout;
@@ -31,8 +33,11 @@ const Sidebar: React.FC = () => {
     else if (path.includes('skills')) setSelectedKeys(['skills']);
     else if (path.includes('mcp')) setSelectedKeys(['mcp']);
     else if (path.includes('logs')) setSelectedKeys(['logs']);
-    else if (path.includes('department')) setSelectedKeys(['dept']);
+    else if (path.includes('org')) setSelectedKeys(['org']);
+    else if (path.includes('department')) setSelectedKeys(['org']);
     else if (path.includes('users')) setSelectedKeys(['users']);
+    else if (path.includes('roles')) setSelectedKeys(['roles']);
+    else if (path.includes('menus')) setSelectedKeys(['menus']);
     else setSelectedKeys([path]);
   }, [location]);
 
@@ -56,11 +61,17 @@ const Sidebar: React.FC = () => {
         case 'logs':
             navigate('/logs');
             break;
-        case 'dept':
-            navigate('/settings/department');
+        case 'org':
+            navigate('/settings/org');
             break;
         case 'users':
             navigate('/settings/users');
+            break;
+        case 'roles':
+            navigate('/roles');
+            break;
+        case 'menus':
+            navigate('/menus');
             break;
         default:
             navigate('/');
@@ -107,8 +118,10 @@ const Sidebar: React.FC = () => {
                         type: 'group', 
                         label: <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest pl-0">组织架构</span>, 
                         children: [
-                            { key: 'dept', icon: <ApartmentOutlined />, label: '部门管理' },
+                            { key: 'org', icon: <ApartmentOutlined />, label: '组织管理 (Org)' },
                             { key: 'users', icon: <UserOutlined />, label: '用户管理' },
+                            { key: 'roles', icon: <SafetyCertificateOutlined />, label: '角色管理' },
+                            { key: 'menus', icon: <ClusterOutlined />, label: '菜单权限管理' },
                         ]
                     }
                 ]}
