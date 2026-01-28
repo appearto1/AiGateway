@@ -361,3 +361,40 @@ export const executeMcpTool = async (serverId: string, toolName: string, args: a
     });
     return response.data;
 };
+
+// Org API
+export interface OrgData {
+    id: string;
+    name: string;
+    en_name: string;
+    parent_id: string;
+    manager: string;
+    quota_total: number;
+    quota_used: number;
+    quota_unit: string;
+    status: number;
+    sort_order: number;
+    children?: OrgData[];
+}
+
+export const getOrgList = async (name?: string) => {
+    const params: any = {};
+    if (name) params.name = name;
+    const response = await axios.get(`${API_BASE_URL}/org/list`, { params });
+    return response.data;
+};
+
+export const createOrg = async (data: Partial<OrgData>) => {
+    const response = await axios.post(`${API_BASE_URL}/org/add`, data);
+    return response.data;
+};
+
+export const updateOrg = async (data: Partial<OrgData>) => {
+    const response = await axios.post(`${API_BASE_URL}/org/update`, data);
+    return response.data;
+};
+
+export const deleteOrg = async (id: string) => {
+    const response = await axios.post(`${API_BASE_URL}/org/delete`, { id });
+    return response.data;
+};
