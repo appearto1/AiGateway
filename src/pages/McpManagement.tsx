@@ -39,7 +39,8 @@ import {
   RocketOutlined,
   PlayCircleOutlined,
   FileTextOutlined,
-  ImportOutlined
+  ImportOutlined,
+  AreaChartOutlined
 } from '@ant-design/icons';
 import { AreaChart, Area, ResponsiveContainer } from 'recharts';
 import { 
@@ -86,6 +87,13 @@ interface McpServerConfig {
   env?: McpEnv; // for stdio
   url?: string; // for sse/streamable_http
   description?: string;
+  created_time?: string;
+  tenant_id?: string;
+  tenant_name?: string;
+  latency?: number;
+  today_calls?: number;
+  total_calls?: number;
+  last_inspect?: string;
 }
 
 interface McpServer extends McpServerConfig {
@@ -110,6 +118,25 @@ const McpManagement: React.FC = () => {
   const [installMode, setInstallMode] = useState<'custom' | 'npm' | 'json'>('custom');
   const [searchText, setSearchText] = useState('');
   const [jsonConfig, setJsonConfig] = useState('');
+  const [isVerifying, setIsVerifying] = useState(false);
+
+  const verifyAllServers = async () => {
+    if (servers.length === 0) return;
+    setIsVerifying(true);
+    message.loading({ content: '正在同步各服务连接状态...', key: 'verify', duration: 0 });
+    
+    try {
+        await Promise.allSettled(
+            servers.map(s => inspectMcpServer(s.id))
+        );
+        message.success({ content: '所有服务状态已同步', key: 'verify' });
+    } catch (e) {
+        message.error({ content: '同步过程中出现错误', key: 'verify' });
+    } finally {
+        setIsVerifying(false);
+        fetchServers();
+    }
+  };
 
   // Tool Testing State
   const [isTestModalOpen, setIsTestModalOpen] = useState(false);
@@ -148,9 +175,15 @@ const McpManagement: React.FC = () => {
                       description: s.description,
                       status: s.status,
                       version: s.version,
+                      created_time: s.created_time ?? s.createdTime ?? '',
+                      tenant_id: s.tenant_id,
+                      tenant_name: s.tenant_name,
                       icon: <RocketOutlined style={{ fontSize: 20, color: '#faad14' }} />, // Default icon
-                      latency: 0, // Mock
-                      latencyHistory: Array(20).fill(0).map(() => ({ value: 10 + Math.random() * 5 })), // Mock
+                      latency: s.latency || 0,
+                      today_calls: s.today_calls || 0,
+                      total_calls: s.total_calls || 0,
+                      last_inspect: s.last_inspect,
+                      latencyHistory: Array(20).fill(0).map(() => ({ value: (s.latency || 10) + Math.random() * 5 })),
                       connectedApps: [], // Mock
                       tools: [],
                       resources: [],
@@ -166,7 +199,10 @@ const McpManagement: React.FC = () => {
   };
 
   useEffect(() => {
-      fetchServers();
+    fetchServers().then(() => {
+      // Auto verify after list is loaded
+      verifyAllServers();
+    });
   }, [searchText]);
 
   useEffect(() => {
@@ -476,75 +512,158 @@ const McpManagement: React.FC = () => {
         token: {
           colorBgElevated: '#1a2632',
           colorBorder: '#233648',
-          borderRadiusLG: 8,
-          fontFamily: 'Inter, sans-serif'
+          borderRadiusLG: 16,
+          borderRadius: 8,
+          fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
+          colorPrimary: '#2563eb',
         },
+        components: {
+          Card: {
+            colorBgContainer: '#1a2632',
+          },
+          Button: {
+            borderRadius: 12,
+            controlHeight: 36,
+          },
+          Input: {
+            borderRadius: 10,
+            colorBgContainer: '#111a22',
+          },
+          Select: {
+            borderRadius: 10,
+            colorBgContainer: '#111a22',
+          }
+        }
       }}
     >
-      <div className="h-full flex flex-col space-y-4">
+      <div className="h-full flex flex-col space-y-6 p-2">
         {/* Top Header */}
-        <div className="flex justify-between items-center bg-[#111a22] p-1">
+        <div className="flex justify-between items-end mb-2 px-1">
           <div>
-            <h1 className="text-2xl font-bold text-white mb-1">MCP 服务管理中心</h1>
-            <p className="text-slate-400 text-sm">管理 Model Context Protocol 服务实例与连接状态。</p>
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="flex items-center bg-[#1a2632] px-3 py-1.5 rounded-full border border-[#233648] text-green-500 text-xs font-mono">
-              <span className="w-2 h-2 rounded-full bg-green-500 mr-2 animate-pulse"></span>
-              系统运行正常
+            <div className="flex items-center gap-3 mb-1">
+              <div className="bg-blue-600/20 p-2 rounded-xl border border-blue-500/30">
+                <RocketOutlined className="text-blue-400 text-xl" />
+              </div>
+              <h1 className="text-2xl font-black text-white tracking-tight">MCP <span className="text-blue-500">Service</span> Hub</h1>
             </div>
-            <Button type="text" icon={<BellOutlined className="text-slate-400 text-lg" />} />
+            <p className="text-slate-400 text-sm font-medium ml-12">
+              Model Context Protocol <span className="text-slate-600 mx-1">/</span> 全生命周期管理
+            </p>
+          </div>
+          <div className="flex items-center gap-4 mb-1">
+            <div className="flex items-center bg-[#1a2632]/80 backdrop-blur-md px-4 py-2 rounded-2xl border border-[#233648] shadow-sm">
+              <span className="relative flex h-2 w-2 mr-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+              </span>
+              <span className="text-slate-300 text-xs font-bold tracking-wide uppercase">Operational</span>
+            </div>
+            <Tooltip title="通知中心">
+              <Button 
+                type="text" 
+                shape="circle"
+                icon={<BellOutlined className="text-slate-400 text-lg" />} 
+                className="hover:bg-[#1a2632]"
+              />
+            </Tooltip>
           </div>
         </div>
 
         {/* Stats Row */}
-        <div className="grid grid-cols-3 gap-4 h-24">
-          <div className="bg-[#1a2632] rounded-xl p-4 border border-[#233648] flex items-center justify-between">
-             <div>
-               <div className="text-slate-400 text-xs font-medium mb-1">在线服务器</div>
-               <div className="flex items-baseline gap-2">
-                 <span className="text-3xl font-bold text-white">{servers.filter(s => s.status === 'active').length}</span>
-                 <span className="text-green-500 text-xs">/ {servers.length} Total</span>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-2">
+          <div className="bg-[#1a2632] rounded-2xl p-5 border border-[#233648] hover:border-blue-500/30 transition-colors shadow-sm relative overflow-hidden group">
+             <div className="absolute top-0 right-0 p-8 opacity-[0.03] group-hover:scale-110 transition-transform">
+                <CloudServerOutlined style={{ fontSize: 80 }} className="text-white" />
+             </div>
+             <div className="relative z-10 flex items-center justify-between">
+               <div>
+                 <div className="text-slate-500 text-[10px] font-bold uppercase tracking-widest mb-2">在线服务器</div>
+                 <div className="flex items-baseline gap-2">
+                   <span className="text-4xl font-black text-white leading-none tracking-tight">{servers.filter(s => s.status === 'active').length}</span>
+                   <span className="text-slate-500 text-xs font-medium font-mono">/ {servers.length}</span>
+                 </div>
+               </div>
+               <div className="bg-blue-500/10 p-4 rounded-2xl border border-blue-500/20 shadow-lg shadow-blue-500/5">
+                  <CloudServerOutlined className="text-blue-400 text-2xl" />
                </div>
              </div>
-             <div className="bg-green-500/10 p-3 rounded-lg">
-                <CloudServerOutlined className="text-green-500 text-xl" />
-             </div>
           </div>
-          <div className="bg-[#1a2632] rounded-xl p-4 border border-[#233648] flex items-center justify-between">
-             <div>
-               <div className="text-slate-400 text-xs font-medium mb-1">今日调用次数</div>
-               <div className="flex items-baseline gap-2">
-                 <span className="text-3xl font-bold text-white">14,203</span>
-                 <span className="text-blue-400 text-xs">+12.5%</span>
+
+          <div className="bg-[#1a2632] rounded-2xl p-5 border border-[#233648] hover:border-emerald-500/30 transition-colors shadow-sm relative overflow-hidden group">
+             <div className="absolute top-0 right-0 p-8 opacity-[0.03] group-hover:scale-110 transition-transform">
+                <ThunderboltOutlined style={{ fontSize: 80 }} className="text-white" />
+             </div>
+             <div className="relative z-10 flex items-center justify-between">
+               <div>
+                 <div className="text-slate-500 text-[10px] font-bold uppercase tracking-widest mb-2">今日调用次数</div>
+                 <div className="flex items-baseline gap-2">
+                   <span className="text-4xl font-black text-white leading-none tracking-tight">
+                     {servers.reduce((acc, s) => acc + (s.today_calls || 0), 0).toLocaleString()}
+                   </span>
+                   <div className="flex items-center text-emerald-400 text-[10px] font-bold bg-emerald-500/10 px-1.5 py-0.5 rounded-full border border-emerald-500/20">
+                     <PlusOutlined className="mr-0.5" /> 实时
+                   </div>
+                 </div>
+               </div>
+               <div className="bg-emerald-500/10 p-4 rounded-2xl border border-emerald-500/20 shadow-lg shadow-emerald-500/5">
+                  <ThunderboltOutlined className="text-emerald-400 text-2xl" />
                </div>
              </div>
-             <div className="bg-blue-500/10 p-3 rounded-lg">
-                <AppstoreOutlined className="text-blue-500 text-xl" />
-             </div>
           </div>
-          <div className="bg-[#1a2632] rounded-xl p-4 border border-[#233648] relative overflow-hidden">
-             <div className="relative z-10 flex justify-between items-start">
-                <div>
-                  <div className="text-slate-400 text-xs font-medium mb-1">平均延迟</div>
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-3xl font-bold text-white">45ms</span>
-                  </div>
+
+          <div className="bg-[#1a2632] rounded-2xl p-5 border border-[#233648] hover:border-amber-500/30 transition-colors shadow-sm relative overflow-hidden group">
+             <div className="relative z-10">
+                <div className="text-slate-500 text-[10px] font-bold uppercase tracking-widest mb-2">平均响应时间</div>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-4xl font-black text-white leading-none tracking-tight">
+                    {Math.round(servers.filter(s => s.status === 'active' && s.latency > 0).reduce((acc, s, _, arr) => acc + s.latency / arr.length, 0)) || 0}
+                  </span>
+                  <span className="text-slate-400 text-sm font-bold">ms</span>
                 </div>
              </div>
-             <div className="absolute bottom-0 left-0 right-0 h-16 opacity-30">
+             <div className="absolute bottom-0 left-0 right-0 h-16 opacity-40 group-hover:opacity-60 transition-opacity">
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={selectedServer?.latencyHistory || []}>
-                    <Area type="monotone" dataKey="value" stroke="#10b981" fill="#10b981" />
+                    <defs>
+                      <linearGradient id="colorLatency" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#fbbf24" stopOpacity={0.3}/>
+                        <stop offset="95%" stopColor="#fbbf24" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <Area type="monotone" dataKey="value" stroke="#fbbf24" strokeWidth={2} fillOpacity={1} fill="url(#colorLatency)" />
                   </AreaChart>
                 </ResponsiveContainer>
+             </div>
+             <div className="absolute top-5 right-5 bg-amber-500/10 p-2.5 rounded-xl border border-amber-500/20">
+                <AreaChartOutlined className="text-amber-400 text-lg" />
              </div>
           </div>
         </div>
 
-        <div className="flex gap-2 justify-end">
-            <Button icon={<ReloadOutlined />} onClick={fetchServers} className="bg-[#1a2632] border-[#334155] text-slate-300">刷新状态</Button>
-            <Button type="primary" icon={<PlusOutlined />} onClick={handleAddServer} className="bg-blue-600">添加新服务器</Button>
+        <div className="flex gap-3 justify-end items-center mb-2 px-1">
+            <Button 
+              icon={<ReloadOutlined spin={isVerifying} />} 
+              onClick={verifyAllServers} 
+              loading={isVerifying}
+              className="bg-[#1a2632] border-[#334155] text-slate-300 hover:text-white hover:border-blue-500/50 rounded-xl h-10 px-5 font-medium transition-all"
+            >
+              一键验证状态
+            </Button>
+            <Button 
+              icon={<ReloadOutlined />} 
+              onClick={fetchServers} 
+              className="bg-[#1a2632] border-[#334155] text-slate-300 hover:text-white hover:border-blue-500/50 rounded-xl h-10 px-5 font-medium transition-all"
+            >
+              刷新列表
+            </Button>
+            <Button 
+              type="primary" 
+              icon={<PlusOutlined />} 
+              onClick={handleAddServer} 
+              className="bg-blue-600 hover:bg-blue-500 border-0 rounded-xl h-10 px-6 font-bold shadow-lg shadow-blue-600/20 transition-all"
+            >
+              部署新服务
+            </Button>
         </div>
 
         {/* Server List */}
@@ -552,55 +671,105 @@ const McpManagement: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {servers.map(server => (
                 <div 
-                key={server.id}
-                onClick={() => handleServerClick(server.id)}
-                className={`p-4 rounded-xl border cursor-pointer transition-all bg-[#1a2632] border-[#233648] hover:border-blue-500/50 hover:shadow-lg hover:shadow-blue-900/10 group relative`}
+                  key={server.id}
+                  onClick={() => handleServerClick(server.id)}
+                  className="p-5 rounded-2xl border cursor-pointer transition-all bg-[#1a2632] border-[#233648] hover:border-blue-500/50 hover:shadow-xl hover:shadow-blue-900/10 group relative flex flex-col h-full"
                 >
-                <div className="flex justify-between items-start mb-3">
-                    <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg flex items-center justify-center overflow-hidden bg-white/5">
-                        {typeof server.icon === 'string' ? <img src={server.icon} alt="" /> : server.icon}
-                    </div>
-                    <div>
-                        <div className="flex items-center gap-2">
-                        <span className="text-white font-bold truncate max-w-[120px]" title={server.name}>{server.name}</span>
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded border ${
-                            server.status === 'active' ? 'bg-green-500/10 text-green-500 border-green-500/20' : 
-                            server.status === 'inactive' ? 'bg-slate-500/10 text-slate-500 border-slate-500/20' : 
-                            'bg-red-500/10 text-red-500 border-red-500/20'
-                        }`}>
+                  <div className="flex justify-between items-start mb-4">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-xl flex items-center justify-center overflow-hidden bg-gradient-to-br from-[#233648] to-[#111a22] border border-white/5 shadow-inner">
+                        {typeof server.icon === 'string' ? (
+                          <img src={server.icon} alt="" className="w-7 h-7 object-contain" />
+                        ) : (
+                          <div className="text-blue-400 group-hover:scale-110 transition-transform">
+                            {React.cloneElement(server.icon as React.ReactElement, { style: { fontSize: 24 } })}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <span className="text-white font-semibold truncate text-base" title={server.name}>{server.name}</span>
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                            server.status === 'active' ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 
+                            server.status === 'inactive' ? 'bg-slate-500/10 text-slate-400 border border-slate-500/20' : 
+                            'bg-red-500/10 text-red-400 border border-red-500/20'
+                          }`}>
                             {server.status.toUpperCase()}
-                        </span>
+                          </span>
                         </div>
-                        <div className="flex items-center gap-2 text-xs text-slate-500 mt-1 font-mono">
-                        <span className="bg-[#111a22] px-1.5 rounded uppercase">{server.type}</span>
-                        <span>{server.version}</span>
+                        <div className="flex items-center gap-2 text-xs text-slate-500 font-mono">
+                          <span className="bg-[#111a22] px-1.5 py-0.5 rounded text-[10px] uppercase text-blue-400/80 font-bold tracking-wider">{server.type}</span>
+                          {server.tenant_name && (
+                            <span className="bg-purple-500/10 text-purple-400 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                              {server.tenant_name}
+                            </span>
+                          )}
+                          {server.version && <span className="opacity-60">v{server.version}</span>}
                         </div>
+                      </div>
                     </div>
+                    <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+                      <Button 
+                        size="small" 
+                        type="text" 
+                        className="text-slate-400 hover:text-white"
+                        onClick={(e) => handleEditClick(e, server)}
+                        icon={<SettingOutlined />}
+                      />
                     </div>
-                </div>
-                
-                <div className="flex justify-between items-center pt-3 border-t border-white/5">
-                    <div className="flex items-center gap-2">
+                  </div>
+                  
+                  <div className="flex-1">
+                    {server.description && (
+                      <p className="text-slate-400 text-xs mb-4 line-clamp-2 leading-relaxed italic opacity-80">
+                        "{server.description}"
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="pt-4 mt-auto border-t border-white/5 flex flex-col gap-3">
+                    <div className="flex justify-between items-center">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-slate-500 font-medium uppercase tracking-wider">Connected</span>
                         <div className="flex -space-x-1.5">
-                        {server.connectedApps.length > 0 ? server.connectedApps.map((app, i) => (
-                            <div key={i} className={`w-5 h-5 rounded-full ${app.color} flex items-center justify-center text-[8px] text-white font-bold border border-[#1a2632]`} title={app.name}>
-                            {app.label}
+                          {server.connectedApps.length > 0 ? server.connectedApps.map((app, i) => (
+                            <div key={i} className={`w-5 h-5 rounded-full ${app.color} flex items-center justify-center text-[8px] text-white font-bold border border-[#1a2632] shadow-sm`} title={app.name}>
+                              {app.label}
                             </div>
-                        )) : <span className="text-xs text-slate-600 italic pl-1">Idle</span>}
+                          )) : <div className="text-[10px] text-slate-600 font-mono">NONE</div>}
                         </div>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
+                        <span className="text-[10px] text-slate-500 font-mono tracking-tighter">IDLE</span>
+                      </div>
                     </div>
-                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Button 
-                            size="small" 
-                            type="text" 
-                            className="text-slate-400 hover:text-white"
-                            onClick={(e) => handleEditClick(e, server)}
-                        >
-                            <SettingOutlined />
-                        </Button>
+                    
+                    <div className="flex items-center justify-between gap-2 pt-1">
+                      <div className="flex items-center gap-3">
+                        {server.id && (
+                          <div className="flex items-center gap-1.5 opacity-40 group-hover:opacity-100 transition-opacity">
+                            <span className="text-[9px] font-bold text-slate-600 uppercase tracking-tighter">ID</span>
+                            <span className="text-[10px] font-mono text-slate-500 truncate max-w-[80px]" title={server.id}>
+                              {server.id.substring(0, 8)}...
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      {server.created_time && (
+                        <div className="flex items-center gap-1 opacity-40 group-hover:opacity-100 transition-opacity">
+                          <span className="text-[9px] font-bold text-slate-600 uppercase tracking-tighter">CREATED</span>
+                          <span className="text-[10px] font-mono text-slate-500">{new Date(server.created_time).toLocaleDateString()}</span>
+                        </div>
+                      )}
                     </div>
-                </div>
+                    {server.last_inspect && (
+                      <div className="flex items-center justify-end gap-1 opacity-30 text-[9px] font-mono">
+                        <span className="uppercase">Last Check:</span>
+                        <span>{server.last_inspect}</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
             ))}
             </div>
@@ -800,44 +969,64 @@ const McpManagement: React.FC = () => {
              {/* Inspector Header */}
              {selectedServer && (
              <>
-             <div className="px-6 py-4 border-b border-[#233648] flex justify-between items-start bg-[#1a2632] rounded-t-lg">
-                <div>
-                   <div className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">协议检查器</div>
-                   <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded bg-white p-1 flex items-center justify-center">
-                        {typeof selectedServer.icon === 'string' ? <img src={selectedServer.icon} alt="" /> : selectedServer.icon}
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                            <h2 className="text-lg font-bold text-white leading-none">{selectedServer.name}</h2>
-                            <Button 
-                                type="text" 
-                                size="small" 
-                                icon={<EditOutlined />} 
-                                className="text-slate-500 hover:text-blue-400"
-                                onClick={(e) => {
-                                    setIsDetailModalOpen(false);
-                                    handleEditClick(e, selectedServer);
-                                }} 
-                            />
+             <div className="px-8 py-6 border-b border-[#233648] flex justify-between items-center bg-gradient-to-r from-[#1a2632] to-[#111a22] rounded-t-2xl">
+                <div className="flex items-center gap-5">
+                   <div className="w-16 h-16 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center shadow-2xl relative group">
+                      <div className="absolute inset-0 bg-blue-500/10 blur-xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                      {typeof selectedServer.icon === 'string' ? (
+                        <img src={selectedServer.icon} alt="" className="w-10 h-10 object-contain relative z-10" />
+                      ) : (
+                        <div className="text-blue-400 relative z-10">
+                          {React.cloneElement(selectedServer.icon as React.ReactElement, { style: { fontSize: 32 } })}
                         </div>
-                        <div className="flex items-center gap-2 mt-1">
-                          <Badge status={selectedServer.status === 'active' ? 'success' : 'default'} />
-                          <span className="text-xs text-green-500 font-mono">已连接</span>
-                          <span className="text-xs text-slate-500 mx-1">|</span>
-                          <span className="text-xs text-slate-400 font-mono">
+                      )}
+                   </div>
+                   <div>
+                      <div className="flex items-center gap-3 mb-1.5">
+                          <h2 className="text-2xl font-black text-white leading-none tracking-tight">{selectedServer.name}</h2>
+                          <div className={`px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wider uppercase border ${
+                            selectedServer.status === 'active' ? 'bg-green-500/10 text-green-400 border-green-500/20' : 
+                            'bg-red-500/10 text-red-400 border-red-500/20'
+                          }`}>
+                            {selectedServer.status}
+                          </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2 bg-black/20 px-2 py-1 rounded-lg border border-white/5">
+                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter">Endpoint</span>
+                          <span className="text-xs text-blue-400 font-mono">
                             {selectedServer.type === 'stdio' 
-                              ? `${selectedServer.command} ${selectedServer.args?.[0]}...` 
+                              ? `${selectedServer.command} ${selectedServer.args?.[0] || ''}` 
                               : selectedServer.url || 'N/A'}
                           </span>
+                        </div>
+                        <span className="text-slate-700 font-bold">·</span>
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></div>
+                          <span className="text-xs text-slate-400 font-medium">响应时间 {selectedServer.latency}ms</span>
                         </div>
                       </div>
                    </div>
                 </div>
-                <div className="flex flex-col items-end gap-1">
-                    <div className="bg-blue-500 text-white text-xs px-2 py-1 rounded-full font-bold">
-                       {selectedServer.tools.length + selectedServer.resources.length + selectedServer.prompts.length} 项
-                    </div>
+                <div className="flex gap-2">
+                    <Button 
+                        icon={<EditOutlined />} 
+                        className="bg-[#233648] border-0 text-slate-300 hover:text-white rounded-xl"
+                        onClick={(e) => {
+                            setIsDetailModalOpen(false);
+                            handleEditClick(e, selectedServer);
+                        }}
+                    >
+                        编辑配置
+                    </Button>
+                    <Button 
+                        icon={<ReloadOutlined spin={isVerifying} />} 
+                        className="bg-blue-600/10 border-blue-600/20 text-blue-400 hover:bg-blue-600 hover:text-white rounded-xl border-0"
+                        onClick={() => handleServerClick(selectedServer.id)}
+                        loading={isVerifying}
+                    >
+                        重连
+                    </Button>
                 </div>
              </div>
              
@@ -983,11 +1172,29 @@ const McpManagement: React.FC = () => {
              </div>
 
              {/* Footer Status Bar */}
-             <div className="bg-[#0d1319] border-t border-[#233648] px-4 py-2 flex justify-between items-center text-xs font-mono text-slate-500 rounded-b-lg">
-                <div>ID: {selectedServer.id}</div>
-                <div className="flex items-center gap-2">
-                  <span>延迟: {selectedServer.latency}ms</span>
-                  <span className={`w-2 h-2 rounded-full ${selectedServer.latency < 50 ? 'bg-green-500' : 'bg-yellow-500'}`}></span>
+             <div className="bg-[#0d1319] border-t border-[#233648] px-8 py-4 flex justify-between items-center text-[10px] font-mono text-slate-500 rounded-b-2xl">
+                  <div className="flex items-center gap-4">
+                  {selectedServer.tenant_name && (
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-slate-700 font-bold">TENANT</span>
+                      <span className="text-purple-400 font-bold uppercase tracking-wider">{selectedServer.tenant_name}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-slate-700 font-bold">UID</span>
+                    <span className="text-slate-400 select-all tracking-wider">{selectedServer.id}</span>
+                  </div>
+                  <span className="text-slate-800">|</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-slate-700 font-bold">DEPLOYED</span>
+                    <span className="text-slate-400 uppercase">{selectedServer.created_time || 'N/A'}</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4">
+                   <div className="flex items-center gap-2">
+                     <span className="text-slate-700 font-bold uppercase tracking-widest">Type</span>
+                     <span className="bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded border border-blue-500/20 text-[9px] font-black uppercase">{selectedServer.type}</span>
+                   </div>
                 </div>
              </div>
              </>

@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import MainLayout from './layouts/MainLayout';
+import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import ModelProviders from './pages/ModelProviders';
 import AppsAndTokens from './pages/AppsAndTokens';
@@ -13,8 +14,15 @@ import OrgManagement from './pages/OrgManagement';
 import UserManagement from './pages/UserManagement';
 import MenuManagement from './pages/MenuManagement';
 import { Empty } from 'antd';
-
+import { getToken } from './services/auth';
 import McpManagement from './pages/McpManagement';
+
+function RequireAuth({ children }: { children: React.ReactNode }) {
+  if (!getToken()) {
+    return <Navigate to="/login" replace />;
+  }
+  return <>{children}</>;
+}
 
 // Placeholder component for other routes
 const PlaceholderPage: React.FC<{ title: string }> = ({ title }) => (
@@ -34,7 +42,8 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<MainLayout />}>
+        <Route path="/login" element={<Login />} />
+        <Route path="/" element={<RequireAuth><MainLayout /></RequireAuth>}>
           <Route index element={<Dashboard />} />
           <Route path="dashboard" element={<Navigate to="/" replace />} />
           <Route path="models" element={<ModelProviders />} />

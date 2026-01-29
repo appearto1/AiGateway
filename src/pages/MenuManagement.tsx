@@ -37,6 +37,7 @@ import {
   deleteMenu
 } from '../services/api';
 import type { MenuData } from '../services/api';
+import { getStoredUser } from '../services/auth';
 
 const { Title } = Typography;
 const { Option } = Select;
@@ -46,6 +47,7 @@ const MenuManagement: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [expandedRowKeys, setExpandedRowKeys] = useState<React.Key[]>([]);
   const [searchText, setSearchText] = useState('');
+  const canEditMenu = getStoredUser()?.has_system_role === true;
   
   // Modal states
   const [isModalVisible, setIsModalVisible] = useState(false);
@@ -250,24 +252,26 @@ const MenuManagement: React.FC = () => {
             );
         }
     },
-    {
-      title: '操作',
-      key: 'action',
-      width: 150,
-      render: (_, record) => (
-        <Space size={0}>
-          <Tooltip title="编辑">
-            <Button type="text" icon={<EditOutlined />} className="text-slate-400 hover:text-white" onClick={() => handleEdit(record)} />
-          </Tooltip>
-          <Tooltip title="添加子项">
-            <Button type="text" icon={<PlusOutlined />} className="text-slate-400 hover:text-blue-400" onClick={() => handleAdd(record)} />
-          </Tooltip>
-          <Tooltip title="删除">
-            <Button type="text" icon={<DeleteOutlined />} danger onClick={() => handleDelete(record.id)} />
-          </Tooltip>
-        </Space>
-      ),
-    },
+    ...(canEditMenu
+      ? [{
+          title: '操作',
+          key: 'action',
+          width: 150,
+          render: (_: unknown, record: MenuData) => (
+            <Space size={0}>
+              <Tooltip title="编辑">
+                <Button type="text" icon={<EditOutlined />} className="text-slate-400 hover:text-white" onClick={() => handleEdit(record)} />
+              </Tooltip>
+              <Tooltip title="添加子项">
+                <Button type="text" icon={<PlusOutlined />} className="text-slate-400 hover:text-blue-400" onClick={() => handleAdd(record)} />
+              </Tooltip>
+              <Tooltip title="删除">
+                <Button type="text" icon={<DeleteOutlined />} danger onClick={() => handleDelete(record.id)} />
+              </Tooltip>
+            </Space>
+          ),
+        } as ColumnsType<MenuData>[number]]
+      : []),
   ];
 
   return (
@@ -276,6 +280,7 @@ const MenuManagement: React.FC = () => {
         <div>
            <Title level={2} style={{ color: 'white', margin: 0, fontSize: '24px' }}>
                 菜单与按钮权限管理 <Tag className="bg-[#1a2632] border-[#233648] text-blue-400 ml-2 rounded px-2">Hierarchical Control</Tag>
+                {!canEditMenu && <Tag className="ml-2 bg-amber-500/20 border-amber-500/30 text-amber-400">仅查看</Tag>}
            </Title>
         </div>
         <Space>
@@ -286,14 +291,16 @@ const MenuManagement: React.FC = () => {
             >
                 {expandedRowKeys.length > 0 ? '全部收起' : '全部展开'}
             </Button>
-            <Button 
-                type="primary" 
-                icon={<PlusOutlined />} 
-                onClick={() => handleAdd()}
-                className="bg-blue-600 hover:bg-blue-500 border-none h-9 px-4"
-            >
-                新增根菜单
-            </Button>
+            {canEditMenu && (
+                <Button 
+                    type="primary" 
+                    icon={<PlusOutlined />} 
+                    onClick={() => handleAdd()}
+                    className="bg-blue-600 hover:bg-blue-500 border-none h-9 px-4"
+                >
+                    新增根菜单
+                </Button>
+            )}
         </Space>
       </div>
 

@@ -24,10 +24,12 @@ import {
   getAppUsageLogs, 
   getApps,
   getModelProviders,
+  getOrgTree,
   type AppUsageLogItem,
   type AppUsageStatsParams,
   type AppData,
-  type ModelProvider
+  type ModelProvider,
+  type OrgData
 } from '../services/api';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs, { type Dayjs } from 'dayjs';
@@ -44,12 +46,14 @@ const CallLogs: React.FC = () => {
   
   // 筛选条件
   const [appId, setAppId] = useState<string>('');
+  const [tenantId, setTenantId] = useState<string>('');
   const [model, setModel] = useState<string>('');
   const [dateRange, setDateRange] = useState<[Dayjs, Dayjs] | null>(null);
   const [requestId, setRequestId] = useState<string>('');
-  
+
   // 下拉选项
   const [apps, setApps] = useState<AppData[]>([]);
+  const [tenants, setTenants] = useState<OrgData[]>([]);
   const [modelProviders, setModelProviders] = useState<ModelProvider[]>([]);
   const [models, setModels] = useState<Array<{ label: string; value: string }>>([]);
   
@@ -68,6 +72,19 @@ const CallLogs: React.FC = () => {
       }
     } catch (error) {
       console.error('Failed to fetch apps', error);
+    }
+  };
+
+  // 获取租户列表（组织树根节点，仅系统角色可见多租户时用于筛选）
+  const fetchTenants = async () => {
+    try {
+      const res = await getOrgTree();
+      if (res.code === 200) {
+        const data = res.data || [];
+        setTenants(Array.isArray(data) ? data : []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch tenants', error);
     }
   };
 
@@ -115,7 +132,9 @@ const CallLogs: React.FC = () => {
       if (appId) {
         params.app_id = appId;
       }
-      
+      if (tenantId) {
+        params.tenant_id = tenantId;
+      }
       if (model) {
         params.model = model;
       }
@@ -146,12 +165,13 @@ const CallLogs: React.FC = () => {
 
   useEffect(() => {
     fetchApps();
+    fetchTenants();
     fetchModelProviders();
   }, []);
 
   useEffect(() => {
     fetchLogs();
-  }, [page, pageSize, appId, model, dateRange]);
+  }, [page, pageSize, appId, tenantId, model, dateRange]);
 
   // 处理搜索
   const handleSearch = () => {
@@ -162,6 +182,7 @@ const CallLogs: React.FC = () => {
   // 重置筛选
   const handleReset = () => {
     setAppId('');
+    setTenantId('');
     setModel('');
     setDateRange(null);
     setRequestId('');
@@ -208,6 +229,15 @@ const CallLogs: React.FC = () => {
       width: 150,
       render: (text) => (
         <span className="text-white font-medium">{text || '-'}</span>
+      ),
+    },
+    {
+      title: '租户',
+      dataIndex: 'tenant_name',
+      key: 'tenant_name',
+      width: 120,
+      render: (text) => (
+        <span className="text-slate-300">{text || '-'}</span>
       ),
     },
     {
@@ -333,7 +363,20 @@ const CallLogs: React.FC = () => {
                 }))}
               />
             </div>
-            
+            <div className="flex items-center gap-2">
+              <span className="text-slate-400 text-sm whitespace-nowrap">租户:</span>
+              <Select
+                placeholder="选择租户"
+                value={tenantId || undefined}
+                onChange={setTenantId}
+                allowClear
+                className="min-w-[160px]"
+                options={tenants.map(t => ({
+                  label: t.name,
+                  value: t.id
+                }))}
+              />
+            </div>
             <div className="flex items-center gap-2">
               <span className="text-slate-400 text-sm whitespace-nowrap">模型:</span>
               <Select

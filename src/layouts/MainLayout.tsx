@@ -58,7 +58,7 @@ const MainLayout: React.FC = () => {
       <Layout className="h-screen overflow-hidden bg-background-dark">
         <Sidebar />
         <Layout className="bg-background-dark">
-          {!isUserPage && <TopHeader />}
+          <TopHeader />
           <Content className={`scroll-smooth ${isNoPaddingPage ? 'p-0 overflow-hidden' : 'p-8 overflow-y-auto'}`} id="main-content">
             <div className={isNoPaddingPage ? 'h-full' : 'max-w-7xl mx-auto space-y-6'}>
                 <Outlet />

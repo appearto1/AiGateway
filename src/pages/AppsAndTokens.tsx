@@ -39,9 +39,12 @@ import {
 } from '@ant-design/icons';
 import { 
   getApps, createApp, updateApp, rotateAppSecret, deleteApp, getModelProviders, getAppModelStats,
-  getKBForApp, getMcpServers
+  getKBForApp, getMcpServers,
+  getAppAuthorizations, addAppAuthorization, deleteAppAuthorization, getOrgList, getUserList
 } from '../services/api';
-import type { AppData, ModelProvider, AppUsageStatsByModel, KnowledgeLibrary, KnowledgeSkill, McpServer } from '../services/api';
+import type { AppData, ModelProvider, AppUsageStatsByModel, KnowledgeLibrary, KnowledgeSkill, McpServer, AppAuthorizationItem, AppAuthTargetType } from '../services/api';
+import type { OrgData } from '../services/api';
+import type { UserData } from '../services/api';
 import dayjs, { type Dayjs } from 'dayjs';
 
 const { Text } = Typography;
@@ -73,6 +76,15 @@ const AppsAndTokens: React.FC = () => {
   
   // MCP State
   const [mcpServers, setMcpServers] = useState<McpServer[]>([]);
+
+  // 应用授权（个人/部门/租户）
+  const [authList, setAuthList] = useState<AppAuthorizationItem[]>([]);
+  const [authLoading, setAuthLoading] = useState(false);
+  const [addAuthType, setAddAuthType] = useState<AppAuthTargetType>('department');
+  const [addAuthValue, setAddAuthValue] = useState<string | null>(null);
+  const [orgTreeData, setOrgTreeData] = useState<{ title: string; value: string; key: string; children?: any[] }[]>([]);
+  const [userList, setUserList] = useState<UserData[]>([]);
+  const [userListLoading, setUserListLoading] = useState(false);
 
   // Combine models from all active providers
   const allAvailableModels = modelProviders.reduce((acc: any[], provider) => {
@@ -128,18 +140,21 @@ const AppsAndTokens: React.FC = () => {
             const libs = res.data.libraries || [];
             const skills = res.data.skills || [];
             
-            // Construct Tree Data
+            // 仅选知识库：知识库可选，技能仅展示不可选（选知识库即使用该库下全部技能，含后续新增）
             const tree = libs.map((lib: KnowledgeLibrary) => {
                 const libSkills = skills.filter((s: KnowledgeSkill) => s.libraryId === lib.id);
                 return {
                     title: lib.name,
                     value: `lib_${lib.id}`,
                     key: `lib_${lib.id}`,
+                    selectable: true,
                     children: libSkills.map((skill: KnowledgeSkill) => ({
                         title: skill.title,
-                        value: skill.id, // Use actual skill ID as value
+                        value: skill.id,
                         key: skill.id,
-                        isLeaf: true
+                        isLeaf: true,
+                        selectable: false,
+                        disabled: true
                     }))
                 };
             });
@@ -149,6 +164,96 @@ const AppsAndTokens: React.FC = () => {
         console.error("Failed to fetch KB data", error);
     }
   };
+
+  // 部门树转 TreeSelect 数据（含递归子节点）
+  const buildOrgTreeSelect = (nodes: OrgData[]): { title: string; value: string; key: string; children?: any[] }[] => {
+    return (nodes || []).map((n) => ({
+      title: n.name,
+      value: n.id,
+      key: n.id,
+      children: n.children && n.children.length > 0 ? buildOrgTreeSelect(n.children) : undefined,
+    }));
+  };
+
+  const fetchAuthList = async () => {
+    if (!editingApp?.id) return;
+    setAuthLoading(true);
+    try {
+      const res = await getAppAuthorizations(editingApp.id);
+      if (res.code === 200) setAuthList(res.data || []);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const fetchOrgTree = async () => {
+    try {
+      const res = await getOrgList();
+      if (res.code === 200) setOrgTreeData(buildOrgTreeSelect(res.data || []));
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const fetchUserListForPicker = async () => {
+    setUserListLoading(true);
+    try {
+      const res = await getUserList({ page: 1, pageSize: 500 });
+      if (res.code === 200 && res.data?.users) setUserList(res.data.users);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setUserListLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (editingApp?.id && isModalOpen) {
+      fetchAuthList();
+      fetchOrgTree();
+    }
+  }, [editingApp?.id, isModalOpen]);
+
+  useEffect(() => {
+    if (addAuthType === 'user' && isModalOpen) fetchUserListForPicker();
+  }, [addAuthType, isModalOpen]);
+
+  const handleAddAuth = async () => {
+    if (!editingApp?.id || !addAuthValue) {
+      messageApi.warning('请选择要授权的对象');
+      return;
+    }
+    try {
+      const res = await addAppAuthorization({ app_id: editingApp.id, target_type: addAuthType, target_id: addAuthValue });
+      if (res.code === 200) {
+        messageApi.success('已添加授权');
+        setAddAuthValue(null);
+        fetchAuthList();
+      } else {
+        messageApi.error(res.msg || '添加失败');
+      }
+    } catch (e) {
+      messageApi.error('添加失败');
+    }
+  };
+
+  const handleRemoveAuth = async (id: string) => {
+    try {
+      const res = await deleteAppAuthorization(id);
+      if (res.code === 200) {
+        messageApi.success('已移除授权');
+        fetchAuthList();
+      } else {
+        messageApi.error(res.msg || '移除失败');
+      }
+    } catch (e) {
+      messageApi.error('移除失败');
+    }
+  };
+
+  const authTypeLabel: Record<AppAuthTargetType, string> = { user: '个人', department: '部门', tenant: '租户（全部部门）' };
 
   const fetchMcpServers = async () => {
     try {
@@ -738,6 +843,89 @@ const AppsAndTokens: React.FC = () => {
                     </div>
                     )}
 
+                    {/* Section: 授权对象（个人/部门/租户） */}
+                    {editingApp && (
+                    <div className="bg-[#111a22]/50 border border-[#233648] rounded-xl p-6 space-y-4">
+                        <div className="flex items-center gap-2 mb-2">
+                            <InfoCircleFilled className="text-primary" />
+                            <span className="text-white font-bold">授权对象</span>
+                        </div>
+                        <p className="text-slate-500 text-[10px] mb-2">
+                            不配置表示所有人可用；配置后仅列表中的个人/部门/租户可用。部门含子部门，租户含该租户下全部部门。
+                        </p>
+                        {authLoading ? (
+                            <div className="text-slate-500 text-sm py-2">加载中...</div>
+                        ) : authList.length > 0 ? (
+                            <div className="space-y-2 mb-4">
+                                {authList.map((a) => (
+                                    <div key={a.id} className="flex items-center justify-between py-2 px-3 rounded-lg bg-[#1a2632] border border-[#233648]">
+                                        <span className="text-slate-300 text-sm">
+                                            <span className="text-slate-500 text-xs mr-2">{authTypeLabel[a.target_type]}</span>
+                                            {a.target_name}
+                                        </span>
+                                        <Popconfirm title="确定移除该授权？" onConfirm={() => handleRemoveAuth(a.id)}>
+                                            <Button type="text" size="small" danger icon={<DeleteOutlined />} className="text-slate-400 hover:text-red-400" />
+                                        </Popconfirm>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="text-slate-500 text-sm py-2 mb-2">暂无授权，所有人可用。</div>
+                        )}
+                        <div className="flex flex-wrap items-end gap-2 pt-2 border-t border-[#233648]">
+                            <Select
+                                value={addAuthType}
+                                onChange={(v) => { setAddAuthType(v); setAddAuthValue(null); }}
+                                options={[
+                                    { value: 'tenant', label: '租户（全部部门）' },
+                                    { value: 'department', label: '部门（含子部门）' },
+                                    { value: 'user', label: '个人' },
+                                ]}
+                                className="w-[160px]"
+                            />
+                            {addAuthType === 'tenant' && (
+                                <Select
+                                    placeholder="选择租户（顶级部门）"
+                                    value={addAuthValue}
+                                    onChange={setAddAuthValue}
+                                    allowClear
+                                    className="min-w-[200px]"
+                                    options={orgTreeData.map((n) => ({ value: n.value, label: n.title }))}
+                                />
+                            )}
+                            {addAuthType === 'department' && (
+                                <TreeSelect
+                                    placeholder="选择部门"
+                                    value={addAuthValue}
+                                    onChange={setAddAuthValue}
+                                    treeData={orgTreeData}
+                                    treeDefaultExpandAll
+                                    allowClear
+                                    className="min-w-[200px]"
+                                    dropdownStyle={{ maxHeight: 280, backgroundColor: '#1a2632' }}
+                                    fieldNames={{ label: 'title', value: 'value' }}
+                                />
+                            )}
+                            {addAuthType === 'user' && (
+                                <Select
+                                    placeholder="选择用户"
+                                    value={addAuthValue}
+                                    onChange={setAddAuthValue}
+                                    allowClear
+                                    showSearch
+                                    optionFilterProp="label"
+                                    loading={userListLoading}
+                                    className="min-w-[200px]"
+                                    options={userList.map((u) => ({ value: u.id, label: `${u.nickname || u.username} (${u.username})` }))}
+                                />
+                            )}
+                            <Button type="primary" size="middle" onClick={handleAddAuth} className="bg-primary border-none">
+                                添加
+                            </Button>
+                        </div>
+                    </div>
+                    )}
+
                     {/* Section: Service Mode Selection (Progressive Disclosure) */}
                     <div className="bg-[#111a22]/50 border border-[#233648] rounded-xl p-6 space-y-4">
                         <div className="flex items-center justify-between">
@@ -768,15 +956,15 @@ const AppsAndTokens: React.FC = () => {
                     <div className="bg-[#111a22]/50 border border-[#233648] rounded-xl p-6 space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
                         <div className="flex items-center gap-2 mb-2">
                             <ReadFilled className="text-primary" />
-                            <span className="text-white font-bold">知识库与技能配置</span>
+                            <span className="text-white font-bold">知识库配置</span>
                         </div>
                         
-                        <Form.Item name="selected_kbs" label={<span className="text-slate-400 text-xs font-bold uppercase tracking-wider">选择关联的知识库技能</span>} className="mb-0">
+                        <Form.Item name="selected_kbs" label={<span className="text-slate-400 text-xs font-bold uppercase tracking-wider">选择知识库</span>} className="mb-0">
                             <TreeSelect
                                 treeData={kbTreeData}
                                 treeCheckable={true}
-                                showCheckedStrategy={TreeSelect.SHOW_CHILD}
-                                placeholder="选择允许此应用访问的知识库技能（勾选知识库将自动选择其下所有技能）"
+                                showCheckedStrategy={TreeSelect.SHOW_PARENT}
+                                placeholder="选择知识库即可，将使用该知识库下全部技能（含后续新增）"
                                 className="w-full"
                                 dropdownStyle={{ maxHeight: 400, overflow: 'auto', backgroundColor: '#1a2632' }}
                                 maxTagCount="responsive"
@@ -784,7 +972,7 @@ const AppsAndTokens: React.FC = () => {
                             />
                         </Form.Item>
                          <p className="text-slate-500 text-[10px] mt-2 italic">
-                            * 勾选父节点（知识库）将默认选中该知识库下的所有技能。
+                            * 只需选择知识库，该知识库下现有及后续新增的技能均可使用；技能节点仅作展示不可勾选。
                         </p>
                     </div>
                     )}

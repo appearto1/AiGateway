@@ -1,12 +1,22 @@
 import React from 'react';
 import { Layout, Input, Button, Badge, Avatar, Typography } from 'antd';
 import { SearchOutlined, BellOutlined, SettingOutlined, LogoutOutlined } from '@ant-design/icons';
+import { useNavigate } from 'react-router-dom';
 import avatarImg from '../assets/avatar.webp';
+import { removeToken, getStoredUser } from '../services/auth';
 
 const { Header } = Layout;
 const { Text } = Typography;
 
 const TopHeader: React.FC = () => {
+  const navigate = useNavigate();
+  const user = getStoredUser();
+
+  const handleLogout = () => {
+    removeToken();
+    navigate('/login', { replace: true });
+  };
+
   return (
     <Header className="h-16 border-b border-[#233648] backdrop-blur-md sticky top-0 z-20 flex items-center justify-between px-8 shrink-0"
             style={{ backgroundColor: 'rgba(17, 26, 34, 0.8)', padding: '0 32px' }}>
@@ -42,12 +52,12 @@ const TopHeader: React.FC = () => {
         />
         
         <div className="flex items-center gap-3 px-3 py-1.5 rounded-lg bg-[#1a2632] border border-[#233648] ml-2">
-            <Avatar src={avatarImg} />
+            <Avatar src={user?.avatar || avatarImg} />
             <div className="flex flex-col overflow-hidden">
-                <Text className="text-white text-sm font-medium truncate">管理员 (Admin)</Text>
-                <Text className="text-slate-400 text-xs truncate">admin@infra.ai</Text>
+                <Text className="text-white text-sm font-medium truncate">{user?.nickname || user?.username || '用户'}</Text>
+                <Text className="text-slate-400 text-xs truncate">{user?.email || user?.username || ''}</Text>
             </div>
-            <Button type="text" icon={<LogoutOutlined />} className="ml-auto text-slate-400 hover:text-white" />
+            <Button type="text" icon={<LogoutOutlined />} className="ml-auto text-slate-400 hover:text-white" onClick={handleLogout} title="退出登录" />
         </div>
       </div>
     </Header>

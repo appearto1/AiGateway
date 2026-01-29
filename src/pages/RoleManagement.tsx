@@ -185,7 +185,7 @@ const RoleManagement: React.FC = () => {
       title: '角色名称 (ROLE NAME)',
       dataIndex: 'name',
       key: 'name',
-      render: (text: string) => {
+      render: (text: string, record: RoleData) => {
         const getIcon = (name: string) => {
           if (name.includes('管理员')) return <SafetyCertificateOutlined className="text-purple-400" />;
           if (name.includes('开发')) return <CodeSandboxOutlined className="text-green-400" />;
@@ -200,7 +200,7 @@ const RoleManagement: React.FC = () => {
                 {getIcon(text)}
             </div>
             <span className="font-medium text-slate-200">{text}</span>
-            {data.find(r => r.name === text)?.is_system === 1 && (
+            {record.is_system === 1 && (
               <Tag color="purple" className="mr-0 text-[10px] px-1 leading-4 h-4 border-none bg-purple-500/20 text-purple-400">系统</Tag>
             )}
           </Space>
@@ -212,6 +212,17 @@ const RoleManagement: React.FC = () => {
       dataIndex: 'description',
       key: 'description',
       render: (text: string) => <span className="text-slate-400">{text || '-'}</span>,
+    },
+    {
+      title: '租户名称',
+      dataIndex: 'tenant_name',
+      key: 'tenant_name',
+      width: 140,
+      render: (_: string, record: RoleData) => (
+        <span className="text-slate-300">
+          {record.is_system === 1 ? '-' : (record.tenant_name || '-')}
+        </span>
+      ),
     },
     {
       title: '角色类型',

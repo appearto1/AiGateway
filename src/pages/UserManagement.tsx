@@ -17,7 +17,6 @@ import {
   Card,
   Pagination,
   Tooltip,
-  Divider,
   Badge
 } from 'antd';
 import { 
@@ -35,8 +34,6 @@ import {
   TeamOutlined,
   SafetyCertificateOutlined,
   CaretDownOutlined,
-  SettingOutlined,
-  BellOutlined,
   RightOutlined,
   CodeOutlined,
   EyeOutlined
@@ -49,7 +46,7 @@ import {
   updateUser, 
   deleteUser, 
   batchDeleteUsers,
-  getOrgList,
+  getOrgTree,
   getRoleList,
 } from '../services/api';
 import type { 
@@ -72,14 +69,26 @@ const UserManagement: React.FC = () => {
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [editingUser, setEditingUser] = useState<UserData | null>(null);
   const [deptTreeData, setDeptTreeData] = useState<DataNode[]>([]);
+  const [expandedKeys, setExpandedKeys] = useState<React.Key[]>([]);
   const [flatDepts, setFlatDepts] = useState<OrgData[]>([]);
   const [roles, setRoles] = useState<RoleData[]>([]);
   const [form] = Form.useForm();
-  
+
   // Filters
   const [searchText, setSearchText] = useState('');
   const [selectedRole, setSelectedRole] = useState<string | undefined>(undefined);
   const [selectedDeptId, setSelectedDeptId] = useState<string | undefined>(undefined);
+
+  const getAllTreeKeys = (nodes: DataNode[]): React.Key[] => {
+    let keys: React.Key[] = [];
+    nodes.forEach((node) => {
+      keys.push(node.key);
+      if (node.children?.length) {
+        keys = keys.concat(getAllTreeKeys(node.children));
+      }
+    });
+    return keys;
+  };
 
   useEffect(() => {
     fetchDepts();
@@ -91,7 +100,7 @@ const UserManagement: React.FC = () => {
     try {
       setLoading(true);
       const res = await getUserList({ 
-        username: searchText, 
+        keyword: searchText || undefined, 
         role_id: selectedRole, 
         department_id: selectedDeptId === 'all' ? undefined : selectedDeptId,
         page,
@@ -112,7 +121,7 @@ const UserManagement: React.FC = () => {
 
   const fetchDepts = async () => {
     try {
-      const res = await getOrgList();
+      const res = await getOrgTree();
       if (res.code === 200) {
         const data = res.data || [];
         
@@ -137,14 +146,16 @@ const UserManagement: React.FC = () => {
             children: item.children ? mapToTree(item.children) : []
           }));
         };
-        setDeptTreeData([
+        const treeData = [
           {
             title: '所有部门',
             key: 'all',
             icon: <TeamOutlined />,
             children: mapToTree(data)
           }
-        ]);
+        ];
+        setDeptTreeData(treeData);
+        setExpandedKeys((prev) => (prev.length === 0 ? getAllTreeKeys(treeData) : prev));
       }
     } catch (error) {
       console.error('Failed to fetch departments');
@@ -335,6 +346,18 @@ const UserManagement: React.FC = () => {
       ),
     },
     {
+      title: '状态 (STATUS)',
+      dataIndex: 'status',
+      key: 'status',
+      width: 100,
+      render: (status: number) =>
+        status === 1 ? (
+          <Tag color="success" className="bg-green-500/10 border-green-500/30 text-green-400">启用</Tag>
+        ) : (
+          <Tag color="default" className="bg-slate-500/10 border-slate-500/30 text-slate-400">停用</Tag>
+        ),
+    },
+    {
       title: '',
       key: 'actions',
       width: 60,
@@ -375,8 +398,10 @@ const UserManagement: React.FC = () => {
         <div className="flex-1 overflow-y-auto p-2 custom-tree-sidebar">
           <Tree
             showIcon
-            defaultExpandAll
             treeData={deptTreeData}
+            expandedKeys={expandedKeys.length > 0 ? expandedKeys : undefined}
+            onExpand={(keys) => setExpandedKeys(keys)}
+            defaultExpandAll
             onSelect={(keys) => setSelectedDeptId(keys[0] as string)}
             className="bg-transparent text-slate-400"
             selectedKeys={selectedDeptId ? [selectedDeptId] : []}
@@ -386,38 +411,24 @@ const UserManagement: React.FC = () => {
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Top Header */}
-        <div className="h-16 border-b border-[#233648] px-6 flex items-center justify-between bg-[#0d1117]">
-          <div className="flex items-center gap-4">
-            <Title level={4} style={{ color: 'white', margin: 0 }}>用户管理</Title>
-            <Tag className="bg-[#1e293b] border-[#334155] text-blue-400 rounded-full px-3">
-              Total: {total}
-            </Tag>
-          </div>
-          <div className="flex items-center gap-4">
-             <div className="relative group">
-                <Input 
-                  placeholder="全局搜索..." 
-                  prefix={<SearchOutlined className="text-slate-500" />}
-                  className="w-64 bg-[#1a2632] border-[#233648] text-slate-200 rounded-lg hover:border-blue-500/50"
-                />
-             </div>
-             <Divider type="vertical" className="border-[#233648] h-6" />
-             <Button type="text" icon={<BellOutlined className="text-slate-400" />} />
-             <Button type="text" icon={<SettingOutlined className="text-slate-400" />} />
-             <Button 
-                type="primary" 
-                icon={<PlusOutlined />} 
-                className="bg-blue-600 hover:bg-blue-500 border-none px-4 rounded-lg"
-                onClick={handleAdd}
-              >
-                邀请用户
-              </Button>
-          </div>
-        </div>
-
-        {/* Content Area */}
+        {/* 使用系统框架 TopHeader，此处仅保留页面标题与操作 */}
         <div className="flex-1 p-6 overflow-hidden flex flex-col">
+          <div className="flex justify-between items-center mb-6">
+            <div className="flex items-center gap-3">
+              <Title level={4} style={{ color: 'white', margin: 0 }}>用户管理</Title>
+              <Tag className="bg-[#1e293b] border-[#334155] text-blue-400 rounded-full px-3">
+                Total: {total}
+              </Tag>
+            </div>
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              className="bg-blue-600 hover:bg-blue-500 border-none px-4 rounded-lg"
+              onClick={handleAdd}
+            >
+              新增用户
+            </Button>
+          </div>
           {/* Filters Bar */}
           <div className="mb-6 flex justify-between items-center">
             <div className="flex gap-4">
@@ -429,6 +440,14 @@ const UserManagement: React.FC = () => {
                 onChange={e => setSearchText(e.target.value)}
                 onPressEnter={fetchUsers}
               />
+              <Button
+                type="primary"
+                icon={<SearchOutlined />}
+                className="bg-blue-600 hover:bg-blue-500 border-none"
+                onClick={fetchUsers}
+              >
+                查询
+              </Button>
               <Select 
                 placeholder="所有角色" 
                 className="w-40 dark-select"
@@ -436,7 +455,9 @@ const UserManagement: React.FC = () => {
                 onChange={value => setSelectedRole(value)}
               >
                 {roles.map(role => (
-                  <Option key={role.id} value={role.id}>{role.name}</Option>
+                  <Option key={role.id} value={role.id}>
+                    {role.name}{role.is_system === 1 ? ' (系统)' : ''}
+                  </Option>
                 ))}
               </Select>
             </div>
@@ -603,7 +624,9 @@ const UserManagement: React.FC = () => {
             >
               <Select mode="multiple" placeholder="请选择平台角色" className="dark-select-multi">
                 {roles.map(role => (
-                  <Option key={role.id} value={role.id}>{role.name}</Option>
+                  <Option key={role.id} value={role.id}>
+                    {role.name}{role.is_system === 1 ? ' (系统)' : ''}
+                  </Option>
                 ))}
               </Select>
             </Form.Item>

@@ -90,12 +90,12 @@ const OrgManagement: React.FC = () => {
     enTitle: org.en_name,
     parentId: org.parent_id,
     manager: org.manager,
-    managerAvatar: MOCK_USERS.find(u => u.name === org.manager)?.color || '#1890ff', // Mock avatar for now
-    memberCount: 0, // Backend doesn't return member count yet, using 0
-    quotaUsed: org.quota_used || 0,
-    quotaTotal: org.quota_total || 0,
+    managerAvatar: MOCK_USERS.find(u => u.name === org.manager)?.color || '#1890ff',
+    memberCount: org.member_count ?? 0,
+    quotaUsed: org.quota_used ?? 0,
+    quotaTotal: org.quota_total ?? 0,
     quotaUnit: (org.quota_unit as 'M' | 'B') || 'M',
-    disabled: org.status === 0, // 0 for disabled/stopped, 1 for active
+    disabled: org.status === 0,
     level,
     children: org.children ? org.children.map(child => mapOrgDataToNode(child, level + 1)) : [],
     isLeaf: !org.children || org.children.length === 0
@@ -142,6 +142,53 @@ const OrgManagement: React.FC = () => {
     });
     return keys;
   };
+
+  // 扁平化树，用于统计
+  const flattenNodes = (nodes: OrgNode[]): OrgNode[] => {
+    let list: OrgNode[] = [];
+    nodes.forEach(node => {
+      list.push(node);
+      if (node.children?.length) {
+        list = list.concat(flattenNodes(node.children));
+      }
+    });
+    return list;
+  };
+
+  // 从树数据计算顶部统计：部门总数、全公司配额、成员分布、租户配额预警
+  const stats = React.useMemo(() => {
+    const all = flattenNodes(treeData);
+    const totalDepartments = all.length;
+    const totalMembers = all.reduce((sum, n) => sum + (n.memberCount ?? 0), 0);
+    const avgMembers = totalDepartments > 0 ? totalMembers / totalDepartments : 0;
+    // 仅租户根（无 parentId 或 level 0）有配额
+    const tenantRoots = all.filter(n => !n.parentId || n.parentId === '' || n.level === 0);
+    const toM = (val: number, unit: string) => (unit === 'B' ? val * 1000 : val);
+    let totalQuotaUsedM = 0;
+    let totalQuotaTotalM = 0;
+    const warningTenants: { name: string; percent: number }[] = [];
+    tenantRoots.forEach(n => {
+      const used = n.quotaUsed ?? 0;
+      const total = n.quotaTotal ?? 0;
+      const unit = n.quotaUnit || 'M';
+      totalQuotaUsedM += toM(used, unit);
+      totalQuotaTotalM += toM(total, unit);
+      if (total > 0 && used / total >= 0.7) {
+        warningTenants.push({ name: n.title, percent: Math.round((used / total) * 100) });
+      }
+    });
+    const quotaDisplayUnit = totalQuotaTotalM >= 1000 ? 'B' : 'M';
+    const quotaDisplayDiv = totalQuotaTotalM >= 1000 ? 1000 : 1;
+    return {
+      totalDepartments,
+      totalMembers,
+      avgMembers: Math.round(avgMembers * 100) / 100,
+      totalQuotaUsed: totalQuotaUsedM / quotaDisplayDiv,
+      totalQuotaTotal: totalQuotaTotalM / quotaDisplayDiv,
+      quotaDisplayUnit,
+      warningTenants,
+    };
+  }, [treeData]);
 
   const handleToggleExpand = () => {
     if (expandedKeys.length > 0) {
@@ -437,24 +484,35 @@ const OrgManagement: React.FC = () => {
                 <span>{node.memberCount} 人</span>
             </div>
 
-            {/* Right: Quota & Actions */}
+            {/* Right: 仅租户显示已使用配额，子部门不显示 */}
             <div className="w-[300px] flex items-center gap-6">
                     <div className="flex-1 flex flex-col justify-center">
-                        <div className="flex justify-between text-[11px] text-slate-400 mb-1.5 font-mono">
-                        <span>Token 配额</span>
-                        <span className={percent > 80 ? 'text-amber-500' : 'text-blue-400'}>
-                            {node.quotaUsed}{node.quotaUnit} <span className="text-slate-600">/ {node.quotaTotal}{node.quotaUnit}</span>
-                        </span>
-                        </div>
-                        <Progress 
-                        percent={percent} 
-                        showInfo={false} 
-                        size="small" 
-                        strokeColor={progressColor} 
-                        trailColor="#1f2937"
-                        strokeWidth={4}
-                        className="m-0"
-                    />
+                        {node.quotaTotal > 0 || node.quotaUsed > 0 ? (
+                          <>
+                            <div className="flex justify-between text-[11px] text-slate-400 mb-1.5 font-mono">
+                              <span>已使用配额</span>
+                              <span className={percent > 80 ? 'text-amber-500' : 'text-blue-400'}>
+                                {node.quotaUsed}{node.quotaUnit}
+                                {node.quotaTotal > 0 && (
+                                  <span className="text-slate-600"> / {node.quotaTotal}{node.quotaUnit}</span>
+                                )}
+                              </span>
+                            </div>
+                            {node.quotaTotal > 0 && (
+                              <Progress 
+                                percent={percent} 
+                                showInfo={false} 
+                                size="small" 
+                                strokeColor={progressColor} 
+                                trailColor="#1f2937"
+                                strokeWidth={4}
+                                className="m-0"
+                              />
+                            )}
+                          </>
+                        ) : (
+                          <span className="text-slate-500 text-xs">-</span>
+                        )}
                     </div>
                     
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -541,7 +599,7 @@ const OrgManagement: React.FC = () => {
            <Title level={2} style={{ color: 'white', margin: 0, fontSize: '24px' }}>
                 组织管理
            </Title>
-           <Tag className="bg-[#1a2632] border-[#233648] text-blue-400 rounded px-2">部门总数: {treeData.length > 0 ? '...' : 0}</Tag>
+           <Tag className="bg-[#1a2632] border-[#233648] text-blue-400 rounded px-2">部门总数: {stats.totalDepartments}</Tag>
         </div>
         <div className="flex gap-3">
              <Input 
@@ -570,9 +628,15 @@ const OrgManagement: React.FC = () => {
                 <span className="text-slate-300 font-medium">全公司 Token 配额</span>
              </div>
              <div className="text-2xl font-bold text-white mb-3">
-                3.82 <span className="text-slate-500 text-lg font-normal">/ 5.00 B</span>
+                {stats.totalQuotaUsed.toFixed(2)} <span className="text-slate-500 text-lg font-normal">/ {stats.totalQuotaTotal.toFixed(2)} {stats.quotaDisplayUnit}</span>
              </div>
-             <Progress percent={76.4} showInfo={false} strokeColor="#1890ff" trailColor="#1f2937" strokeWidth={8} />
+             <Progress
+               percent={stats.totalQuotaTotal > 0 ? Math.round((stats.totalQuotaUsed / stats.totalQuotaTotal) * 100) : 0}
+               showInfo={false}
+               strokeColor="#1890ff"
+               trailColor="#1f2937"
+               strokeWidth={8}
+             />
         </div>
 
         <div className="bg-[#111a22] p-6 rounded-xl border border-[#233648]">
@@ -581,20 +645,33 @@ const OrgManagement: React.FC = () => {
                 <span className="text-slate-300 font-medium">成员分布情况</span>
              </div>
              <div className="text-2xl font-bold text-white mb-1">
-                117 <span className="text-slate-400 text-base font-normal">名成员</span>
+                {stats.totalMembers} <span className="text-slate-400 text-base font-normal">名成员</span>
              </div>
-             <div className="text-slate-500 text-xs">平均每个部门 9.75 人</div>
+             <div className="text-slate-500 text-xs">平均每个部门 {stats.avgMembers} 人</div>
         </div>
 
         <div className="bg-[#111a22] p-6 rounded-xl border border-[#233648]">
              <div className="flex items-center gap-3 mb-2">
                 <WarningOutlined className="text-amber-500 text-lg" />
-                <span className="text-slate-300 font-medium">配额预警</span>
+                <span className="text-slate-300 font-medium">租户配额预警</span>
              </div>
-             <div className="text-xl font-bold text-white mb-1">
-                2 <span className="text-slate-400 text-base font-normal">个部门配额告急</span>
-             </div>
-             <div className="text-amber-500/80 text-xs">研发部 & 上海分公司 超过 70%</div>
+             {stats.warningTenants.length > 0 ? (
+               <>
+                 <div className="text-xl font-bold text-white mb-1">
+                   {stats.warningTenants.length} <span className="text-slate-400 text-base font-normal">个租户配额使用超过 70%</span>
+                 </div>
+                 <div className="text-amber-500/80 text-xs">
+                   {stats.warningTenants.map(t => `${t.name} (${t.percent}%)`).join('、')}
+                 </div>
+               </>
+             ) : (
+               <>
+                 <div className="text-xl font-bold text-white mb-1">
+                   <span className="text-slate-400 text-base font-normal">暂无预警</span>
+                 </div>
+                 <div className="text-slate-500 text-xs">各租户配额使用均低于 70%</div>
+               </>
+             )}
         </div>
       </div>
 

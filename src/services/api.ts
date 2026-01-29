@@ -13,6 +13,40 @@ const BASE_URL = window.API_BASE_URL || 'http://192.168.120.99:8088/api';
 export const API_BASE_URL = `${BASE_URL}/web`;
 export const OPENAI_BASE_URL = `${BASE_URL}/v1`;
 
+// 请求拦截：为需要登录的接口附加 X-Token（与 auth.ts 中 AUTH_TOKEN_KEY 一致）
+const AUTH_TOKEN_KEY = 'ai_gateway_token';
+axios.interceptors.request.use((config) => {
+  const token = localStorage.getItem(AUTH_TOKEN_KEY);
+  if (token) {
+    config.headers.set('X-Token', token);
+  }
+  return config;
+});
+
+// 响应拦截：401 时清除 token 并跳转登录（兼容后端返回 HTTP 200 但 body.code=401 的情况）
+function clearTokenAndRedirectToLogin(url?: string) {
+  if (url?.includes('/user/login') || url?.includes('/auth/public_key')) return;
+  localStorage.removeItem(AUTH_TOKEN_KEY);
+  localStorage.removeItem('ai_gateway_user');
+  window.location.href = `${window.location.origin}/login`;
+}
+
+axios.interceptors.response.use(
+  (res) => {
+    if (res.data?.code === 401) {
+      clearTokenAndRedirectToLogin(res.config?.url);
+      return Promise.reject(new Error(res.data?.msg || '请重新登录'));
+    }
+    return res;
+  },
+  (err) => {
+    if (err.response?.data?.code === 401 || err.response?.status === 401) {
+      clearTokenAndRedirectToLogin(err.config?.url);
+    }
+    return Promise.reject(err);
+  }
+);
+
 export interface ModelProvider {
     id: string;
     name: string;
@@ -187,6 +221,33 @@ export const deleteApp = async (id: string) => {
     return response.data;
 };
 
+// 应用授权（个人/部门/租户）
+export type AppAuthTargetType = 'user' | 'department' | 'tenant';
+
+export interface AppAuthorizationItem {
+    id: string;
+    app_id: string;
+    target_type: AppAuthTargetType;
+    target_id: string;
+    target_name: string;
+    created_time: string;
+}
+
+export const getAppAuthorizations = async (appId: string) => {
+    const response = await axios.get(`${API_BASE_URL}/app/authorization/list`, { params: { app_id: appId } });
+    return response.data;
+};
+
+export const addAppAuthorization = async (params: { app_id: string; target_type: AppAuthTargetType; target_id: string }) => {
+    const response = await axios.post(`${API_BASE_URL}/app/authorization/add`, params);
+    return response.data;
+};
+
+export const deleteAppAuthorization = async (id: string) => {
+    const response = await axios.post(`${API_BASE_URL}/app/authorization/delete`, { id });
+    return response.data;
+};
+
 // 应用使用统计相关接口
 export interface AppUsageStatsByModel {
     model: string;
@@ -214,6 +275,8 @@ export interface AppUsageLogItem {
     id: string;
     app_id: string;
     app_name: string;
+    tenant_id?: string;
+    tenant_name?: string;
     model: string;
     provider_name: string;
     request_id: string;
@@ -234,6 +297,7 @@ export interface AppUsageLogsResponse {
 
 export interface AppUsageStatsParams {
     app_id?: string;
+    tenant_id?: string;
     model?: string;
     request_id?: string;
     start_time?: string;
@@ -322,6 +386,8 @@ export interface McpServer {
     status: string;
     version: string;
     icon: string;
+    tenant_id?: string;
+    tenant_name?: string;
     created_time?: string;
 }
 
@@ -374,6 +440,7 @@ export interface OrgData {
     quota_unit: string;
     status: number;
     sort_order: number;
+    member_count?: number;
     children?: OrgData[];
 }
 
@@ -381,6 +448,12 @@ export const getOrgList = async (name?: string) => {
     const params: any = {};
     if (name) params.name = name;
     const response = await axios.get(`${API_BASE_URL}/org/list`, { params });
+    return response.data;
+};
+
+/** 获取组织树（权限过滤，用于用户管理左侧部门树等） */
+export const getOrgTree = async () => {
+    const response = await axios.get(`${API_BASE_URL}/org/tree`);
     return response.data;
 };
 
@@ -444,6 +517,8 @@ export type RoleData = {
     description: string;
     is_system: number;
     status: number;
+    tenant_id?: string;
+    tenant_name?: string;
     menus?: MenuData[];
     menu_ids?: string[];
 }
@@ -502,6 +577,7 @@ export interface UserData {
 }
 
 export const getUserList = async (params: {
+    keyword?: string;
     username?: string;
     phone?: string;
     role_id?: string;
