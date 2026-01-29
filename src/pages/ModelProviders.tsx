@@ -62,6 +62,7 @@ interface Vendor {
   todayTokens?: number;
   totalTokens?: number;
   description?: string;
+  tenantName?: string;
   models: string[];
   baseUrl: string;
   apiKey: string;
@@ -171,6 +172,7 @@ const ModelProviders: React.FC = () => {
                     errorRate: p.error_rate,
                     todayTokens: p.today_tokens,
                     totalTokens: p.total_tokens,
+                    tenantName: p.tenant_name,
                     baseUrl: p.base_url,
                     apiKey: p.api_key,
                     iconBg: dynamicBg,
@@ -527,6 +529,13 @@ const ModelProviders: React.FC = () => {
                                             vendor.status === 1 ? '连接异常' : '已禁用'}
                                         </span>
                                     </div>
+                                    {vendor.tenantName && (
+                                        <div className="mt-1">
+                                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400/80 font-bold tracking-wider uppercase">
+                                                {vendor.tenantName}
+                                            </span>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                             <Switch 
@@ -633,9 +642,16 @@ const ModelProviders: React.FC = () => {
                 <div className="flex justify-between items-center px-6 py-5 border-b border-[#233648]">
                     <div className="flex items-center gap-2.5">
                         <AppstoreFilled className="text-primary text-lg" />
-                        <span className="text-white text-lg font-bold tracking-tight">
-                            {modalMode === 'add' ? '添加模型配置' : `配置 ${selectedVendor?.name}`}
-                        </span>
+                        <div>
+                            <span className="text-white text-lg font-bold tracking-tight block">
+                                {modalMode === 'add' ? '添加模型配置' : `配置 ${selectedVendor?.name}`}
+                            </span>
+                            {selectedVendor?.tenantName && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400/80 font-bold tracking-wider uppercase">
+                                    {selectedVendor.tenantName}
+                                </span>
+                            )}
+                        </div>
                     </div>
                     <div className="flex items-center gap-1">
                         <Button 

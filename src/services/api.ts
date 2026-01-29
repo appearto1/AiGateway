@@ -62,6 +62,8 @@ export interface ModelProvider {
     error_rate: string;
     today_tokens: number;
     total_tokens: number;
+    tenant_id?: string;
+    tenant_name?: string;
 }
 
 export interface ChatMessage {
