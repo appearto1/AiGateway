@@ -9,6 +9,8 @@ const { Content } = Layout;
 const MainLayout: React.FC = () => {
   const location = useLocation();
   const isSkillsPage = location.pathname.startsWith('/skills');
+  const isUserPage = location.pathname.includes('/settings/users');
+  const isNoPaddingPage = isSkillsPage || isUserPage;
 
   return (
     <ConfigProvider
@@ -56,9 +58,9 @@ const MainLayout: React.FC = () => {
       <Layout className="h-screen overflow-hidden bg-background-dark">
         <Sidebar />
         <Layout className="bg-background-dark">
-          <TopHeader />
-          <Content className={`scroll-smooth ${isSkillsPage ? 'p-0 overflow-hidden' : 'p-8 overflow-y-auto'}`} id="main-content">
-            <div className={isSkillsPage ? 'h-full' : 'max-w-7xl mx-auto space-y-6'}>
+          {!isUserPage && <TopHeader />}
+          <Content className={`scroll-smooth ${isNoPaddingPage ? 'p-0 overflow-hidden' : 'p-8 overflow-y-auto'}`} id="main-content">
+            <div className={isNoPaddingPage ? 'h-full' : 'max-w-7xl mx-auto space-y-6'}>
                 <Outlet />
             </div>
           </Content>

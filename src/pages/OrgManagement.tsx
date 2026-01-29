@@ -601,7 +601,7 @@ const OrgManagement: React.FC = () => {
       <div className="flex-1 bg-[#111a22] border border-[#233648] rounded-xl overflow-hidden flex flex-col mb-6">
           <div className="p-4 border-b border-[#233648] flex justify-between items-center">
               <div>
-                  <h3 className="text-white font-bold text-lg m-0">公司架构</h3>
+                  <h3 className="text-white font-bold text-lg m-0">组织架构</h3>
                   <p className="text-slate-500 text-xs m-0 mt-1">拖拽部门可调整层级与排序</p>
               </div>
               <Button size="small" className="bg-[#1a2632] border-[#233648] text-slate-400" onClick={handleToggleExpand}>

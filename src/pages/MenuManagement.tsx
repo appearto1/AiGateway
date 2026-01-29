@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Table, 
   Button, 
@@ -30,119 +30,21 @@ import {
   PartitionOutlined
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
+import { 
+  getMenuList, 
+  createMenu, 
+  updateMenu, 
+  deleteMenu
+} from '../services/api';
+import type { MenuData } from '../services/api';
 
 const { Title } = Typography;
 const { Option } = Select;
 
-// Define types
-type MenuType = 'directory' | 'menu' | 'button';
-
-interface MenuData {
-  id: string;
-  name: string;
-  type: MenuType;
-  path?: string; // Component path
-  permission?: string;
-  apiMethod?: 'GET' | 'POST' | 'PUT' | 'DELETE';
-  apiPath?: string;
-  children?: MenuData[];
-}
-
-// Mock Data
-const initialData: MenuData[] = [
-  {
-    id: '1',
-    name: '系统管理',
-    type: 'directory',
-    path: 'Layout',
-    children: [
-      {
-        id: '1-1',
-        name: '用户管理',
-        type: 'menu',
-        path: '/system/user/index',
-        permission: 'sys:user:list',
-        apiMethod: 'GET',
-        apiPath: '/api/v1/users',
-        children: [
-          {
-            id: '1-1-1',
-            name: '新增用户',
-            type: 'button',
-            permission: 'sys:user:add',
-            apiMethod: 'POST',
-            apiPath: '/api/v1/users',
-          },
-          {
-            id: '1-1-2',
-            name: '修改用户',
-            type: 'button',
-            permission: 'sys:user:edit',
-            apiMethod: 'PUT',
-            apiPath: '/api/v1/users',
-          },
-          {
-             id: '1-1-3',
-             name: '删除用户',
-             type: 'button',
-             permission: 'sys:user:delete',
-             apiMethod: 'DELETE',
-             apiPath: '/api/v1/users',
-           }
-        ]
-      },
-      {
-        id: '1-2',
-        name: '角色管理',
-        type: 'menu',
-        path: '/system/role/index',
-        permission: 'sys:role:list',
-        apiMethod: 'GET',
-        apiPath: '/api/v1/roles',
-        children: [
-             {
-                id: '1-2-1',
-                name: '新增角色',
-                type: 'button',
-                permission: 'sys:role:add',
-                apiMethod: 'POST',
-                apiPath: '/api/v1/roles',
-              },
-        ]
-      },
-      {
-        id: '1-3',
-        name: '菜单管理',
-        type: 'menu',
-        path: '/system/menu/index',
-        permission: 'sys:menu:list',
-        apiMethod: 'GET',
-        apiPath: '/api/v1/menus',
-      }
-    ]
-  },
-  {
-    id: '2',
-    name: '模型管理',
-    type: 'directory',
-    path: 'Layout',
-    children: [
-        {
-            id: '2-1',
-            name: '模型渠道',
-            type: 'menu',
-            path: '/model/providers',
-            permission: 'model:provider:list',
-            apiMethod: 'GET',
-            apiPath: '/api/v1/providers',
-        }
-    ]
-  }
-];
-
 const MenuManagement: React.FC = () => {
-  const [data, setData] = useState<MenuData[]>(initialData);
-  const [expandedRowKeys, setExpandedRowKeys] = useState<React.Key[]>(['1', '1-1']);
+  const [data, setData] = useState<MenuData[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [expandedRowKeys, setExpandedRowKeys] = useState<React.Key[]>([]);
   const [searchText, setSearchText] = useState('');
   
   // Modal states
@@ -151,12 +53,58 @@ const MenuManagement: React.FC = () => {
   const [parentItem, setParentItem] = useState<MenuData | null>(null);
   const [form] = Form.useForm();
 
+  // Load data
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const res = await getMenuList(searchText);
+      if (res.code === 200) {
+        // Recursive function to ensure children is undefined if empty
+        const cleanData = (items: MenuData[]): MenuData[] => {
+          return items.map(item => {
+            const newItem = { ...item };
+            if (newItem.children && newItem.children.length === 0) {
+              delete newItem.children;
+            } else if (newItem.children && newItem.children.length > 0) {
+              newItem.children = cleanData(newItem.children);
+            }
+            return newItem;
+          });
+        };
+        setData(cleanData(res.data || []));
+      } else {
+        message.error(res.msg || '获取菜单列表失败');
+      }
+    } catch (error) {
+      message.error('请求失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const handleSearch = () => {
+    fetchData();
+  };
+
+  const handleReset = () => {
+    setSearchText('');
+    getMenuList('').then(res => {
+      if (res.code === 200) {
+        setData(res.data || []);
+      }
+    });
+  };
+
   // Helper to flatten keys for expanding all
   const getAllKeys = (items: MenuData[]): string[] => {
     let keys: string[] = [];
     items.forEach(item => {
-      keys.push(item.id);
-      if (item.children) {
+      if (item.children && item.children.length > 0) {
+        keys.push(item.id);
         keys = keys.concat(getAllKeys(item.children));
       }
     });
@@ -177,18 +125,18 @@ const MenuManagement: React.FC = () => {
       content: '确定要删除该菜单项吗？删除父级将同时删除所有子项。',
       okText: '确认',
       cancelText: '取消',
-      onOk: () => {
-        const deleteLoop = (items: MenuData[]): MenuData[] => {
-            return items.filter(item => {
-                if (item.id === id) return false;
-                if (item.children) {
-                    item.children = deleteLoop(item.children);
-                }
-                return true;
-            });
-        };
-        setData(deleteLoop([...data]));
-        message.success('删除成功');
+      onOk: async () => {
+        try {
+          const res = await deleteMenu(id);
+          if (res.code === 200) {
+            message.success('删除成功');
+            fetchData();
+          } else {
+            message.error(res.msg || '删除失败');
+          }
+        } catch (error) {
+          message.error('请求失败');
+        }
       }
     });
   };
@@ -198,69 +146,43 @@ const MenuManagement: React.FC = () => {
     setParentItem(parent || null);
     form.resetFields();
     if (parent) {
-        form.setFieldsValue({ type: 'menu' }); // Default sub-item to menu
+        form.setFieldsValue({ type: 'menu', parent_id: parent.id }); // Default sub-item to menu
     } else {
-        form.setFieldsValue({ type: 'directory' }); // Default root to directory
+        form.setFieldsValue({ type: 'directory', parent_id: '' }); // Default root to directory
     }
     setIsModalVisible(true);
   };
 
   const handleEdit = (record: MenuData) => {
     setEditingItem(record);
-    setParentItem(null); // Editing existing item, parent context implies staying in place
-    form.setFieldsValue(record);
+    setParentItem(null); 
+    form.setFieldsValue({
+        ...record,
+        parent_id: record.parent_id || ''
+    });
     setIsModalVisible(true);
   };
 
   const handleModalOk = () => {
-    form.validateFields().then(values => {
-        const newItem: MenuData = {
-            id: editingItem ? editingItem.id : Date.now().toString(),
-            ...values,
-            children: editingItem ? editingItem.children : []
-        };
-
-        if (editingItem) {
-            // Update existing
-            const updateLoop = (items: MenuData[]): MenuData[] => {
-                return items.map(item => {
-                    if (item.id === editingItem.id) {
-                        return { ...newItem, children: item.children }; // Preserve children
-                    }
-                    if (item.children) {
-                        return { ...item, children: updateLoop(item.children) };
-                    }
-                    return item;
-                });
-            };
-            setData(updateLoop([...data]));
-            message.success('更新成功');
-        } else {
-            // Add new
-            if (parentItem) {
-                const addLoop = (items: MenuData[]): MenuData[] => {
-                    return items.map(item => {
-                        if (item.id === parentItem.id) {
-                            return { 
-                                ...item, 
-                                children: [...(item.children || []), newItem] 
-                            };
-                        }
-                        if (item.children) {
-                            return { ...item, children: addLoop(item.children) };
-                        }
-                        return item;
-                    });
-                };
-                setData(addLoop([...data]));
-                // Auto expand parent
-                setExpandedRowKeys(prev => [...prev, parentItem.id]);
+    form.validateFields().then(async values => {
+        try {
+            let res;
+            if (editingItem) {
+                res = await updateMenu({ ...values, id: editingItem.id });
             } else {
-                setData([...data, newItem]);
+                res = await createMenu(values);
             }
-            message.success('创建成功');
+
+            if (res.code === 200) {
+                message.success(editingItem ? '更新成功' : '创建成功');
+                setIsModalVisible(false);
+                fetchData();
+            } else {
+                message.error(res.msg || '操作失败');
+            }
+        } catch (error) {
+            message.error('请求失败');
         }
-        setIsModalVisible(false);
     });
   };
 
@@ -312,18 +234,18 @@ const MenuManagement: React.FC = () => {
         key: 'api',
         width: 200,
         render: (_, record) => {
-            if (!record.apiMethod && !record.apiPath) return '-';
+            if (!record.api_method && !record.api_path) return '-';
             
             let color = 'default';
-            if (record.apiMethod === 'GET') color = 'blue';
-            else if (record.apiMethod === 'POST') color = 'green';
-            else if (record.apiMethod === 'PUT') color = 'orange';
-            else if (record.apiMethod === 'DELETE') color = 'red';
+            if (record.api_method === 'GET') color = 'blue';
+            else if (record.api_method === 'POST') color = 'green';
+            else if (record.api_method === 'PUT') color = 'orange';
+            else if (record.api_method === 'DELETE') color = 'red';
 
             return (
                 <Space size={4}>
-                    {record.apiMethod && <Tag color={color} className="mr-0 text-[10px] px-1 leading-4 h-5">{record.apiMethod}</Tag>}
-                    <span className="text-slate-400 font-mono text-xs">{record.apiPath}</span>
+                    {record.api_method && <Tag color={color} className="mr-0 text-[10px] px-1 leading-4 h-5">{record.api_method}</Tag>}
+                    <span className="text-slate-400 font-mono text-xs">{record.api_path}</span>
                 </Space>
             );
         }
@@ -387,10 +309,24 @@ const MenuManagement: React.FC = () => {
                 className="bg-[#1a2632] border-[#233648] text-slate-200 placeholder-slate-500 hover:border-blue-500/50 focus:border-blue-500 w-full max-w-[400px]"
                 value={searchText}
                 onChange={e => setSearchText(e.target.value)}
+                onPressEnter={handleSearch}
             />
-            <Button icon={<ReloadOutlined />} className="bg-[#1a2632] border-[#233648] text-slate-300 hover:text-white hover:border-slate-500">
-                重置
-            </Button>
+            <Space>
+              <Button 
+                icon={<SearchOutlined />} 
+                onClick={handleSearch}
+                className="bg-[#1a2632] border-[#233648] text-slate-300 hover:text-white hover:border-slate-500"
+              >
+                搜索
+              </Button>
+              <Button 
+                icon={<ReloadOutlined />} 
+                onClick={handleReset}
+                className="bg-[#1a2632] border-[#233648] text-slate-300 hover:text-white hover:border-slate-500"
+              >
+                  重置
+              </Button>
+            </Space>
         </div>
 
         <Table
@@ -398,6 +334,7 @@ const MenuManagement: React.FC = () => {
           dataSource={data}
           rowKey="id"
           pagination={false}
+          loading={loading}
           expandable={{
             expandedRowKeys,
             onExpandedRowsChange: (keys) => setExpandedRowKeys(keys as React.Key[]),
@@ -451,8 +388,11 @@ const MenuManagement: React.FC = () => {
         <Form
             form={form}
             layout="vertical"
-            initialValues={{ type: 'menu', apiMethod: 'GET' }}
+            initialValues={{ type: 'menu', api_method: 'GET', parent_id: '' }}
         >
+            <Form.Item name="parent_id" hidden>
+                <Input />
+            </Form.Item>
             <div className="grid grid-cols-2 gap-4">
                 <Form.Item
                     name="type"
@@ -502,7 +442,7 @@ const MenuManagement: React.FC = () => {
 
             <div className="grid grid-cols-4 gap-4">
                 <Form.Item
-                    name="apiMethod"
+                    name="api_method"
                     label="请求方式"
                     className="col-span-1"
                 >
@@ -514,7 +454,7 @@ const MenuManagement: React.FC = () => {
                     </Select>
                 </Form.Item>
                 <Form.Item
-                    name="apiPath"
+                    name="api_path"
                     label="后端接口路径"
                     className="col-span-3"
                 >

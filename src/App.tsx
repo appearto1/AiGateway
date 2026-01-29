@@ -10,6 +10,7 @@ import SkillEditor from './pages/SkillEditor';
 import CallLogs from './pages/CallLogs';
 import RoleManagement from './pages/RoleManagement';
 import OrgManagement from './pages/OrgManagement';
+import UserManagement from './pages/UserManagement';
 import MenuManagement from './pages/MenuManagement';
 import { Empty } from 'antd';
 
@@ -47,7 +48,7 @@ function App() {
           <Route path="menus" element={<MenuManagement />} />
           <Route path="settings/org" element={<OrgManagement />} />
           <Route path="settings/department" element={<Navigate to="/settings/org" replace />} />
-          <Route path="settings/users" element={<PlaceholderPage title="用户管理" />} />
+          <Route path="settings/users" element={<UserManagement />} />
           <Route path="*" element={<PlaceholderPage title="404 Not Found" />} />
         </Route>
       </Routes>

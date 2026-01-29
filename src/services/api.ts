@@ -398,3 +398,137 @@ export const deleteOrg = async (id: string) => {
     const response = await axios.post(`${API_BASE_URL}/org/delete`, { id });
     return response.data;
 };
+
+// Menu API
+export type MenuData = {
+    id: string;
+    name: string;
+    type: 'directory' | 'menu' | 'button';
+    path?: string;
+    permission?: string;
+    api_method?: string;
+    api_path?: string;
+    parent_id?: string;
+    icon?: string;
+    sort?: number;
+    status?: number;
+    children?: MenuData[];
+}
+
+export const getMenuList = async (name?: string) => {
+    const params: any = {};
+    if (name) params.name = name;
+    const response = await axios.get(`${API_BASE_URL}/menu/list`, { params });
+    return response.data;
+};
+
+export const createMenu = async (data: Partial<MenuData>) => {
+    const response = await axios.post(`${API_BASE_URL}/menu/add`, data);
+    return response.data;
+};
+
+export const updateMenu = async (data: Partial<MenuData>) => {
+    const response = await axios.post(`${API_BASE_URL}/menu/update`, data);
+    return response.data;
+};
+
+export const deleteMenu = async (id: string) => {
+    const response = await axios.post(`${API_BASE_URL}/menu/delete`, { id });
+    return response.data;
+};
+
+// Role API
+export type RoleData = {
+    id: string;
+    name: string;
+    description: string;
+    is_system: number;
+    status: number;
+    menus?: MenuData[];
+    menu_ids?: string[];
+}
+
+export const getRoleList = async (name?: string) => {
+    const params: any = {};
+    if (name) params.name = name;
+    const response = await axios.get(`${API_BASE_URL}/role/list`, { params });
+    return response.data;
+};
+
+export const createRole = async (data: Partial<RoleData>) => {
+    const response = await axios.post(`${API_BASE_URL}/role/add`, data);
+    return response.data;
+};
+
+export const updateRole = async (data: Partial<RoleData>) => {
+    const response = await axios.post(`${API_BASE_URL}/role/update`, data);
+    return response.data;
+};
+
+export const deleteRole = async (id: string) => {
+    const response = await axios.post(`${API_BASE_URL}/role/delete`, { id });
+    return response.data;
+};
+
+// 简化的菜单选项类型（仅用于角色权限分配）
+export type MenuOption = {
+    id: string;
+    name: string;
+    children?: MenuOption[];
+}
+
+// 获取菜单选项（仅返回 id 和 name，用于角色管理）
+export const getMenuOptions = async () => {
+    const response = await axios.get(`${API_BASE_URL}/role/menu_options`);
+    return response.data;
+};
+
+// User API
+export interface UserData {
+    id: string;
+    username: string;
+    nickname: string;
+    avatar?: string;
+    phone?: string;
+    email: string;
+    department_id?: string;
+    department_name?: string;
+    job_title?: string;
+    roles: string[]; // Role IDs
+    role_names?: string[];
+    status: number; // 1: active, 0: inactive
+    created_at: string;
+    last_login_at?: string;
+}
+
+export const getUserList = async (params: {
+    username?: string;
+    phone?: string;
+    role_id?: string;
+    department_id?: string;
+    page?: number;
+    pageSize?: number;
+}) => {
+    const response = await axios.get(`${API_BASE_URL}/user/list`, { params });
+    return response.data;
+};
+
+export const createUser = async (data: Partial<UserData>) => {
+    const response = await axios.post(`${API_BASE_URL}/user/add`, data);
+    return response.data;
+};
+
+export const updateUser = async (data: Partial<UserData>) => {
+    const response = await axios.post(`${API_BASE_URL}/user/update`, data);
+    return response.data;
+};
+
+export const deleteUser = async (id: string) => {
+    const response = await axios.post(`${API_BASE_URL}/user/delete`, { id });
+    return response.data;
+};
+
+export const batchDeleteUsers = async (ids: string[]) => {
+    const response = await axios.post(`${API_BASE_URL}/user/batch_delete`, { ids });
+    return response.data;
+};
