@@ -456,7 +456,8 @@ const UserManagement: React.FC = () => {
               >
                 {roles.map(role => (
                   <Option key={role.id} value={role.id}>
-                    {role.name}{role.is_system === 1 ? ' (系统)' : ''}
+                    {role.name}
+                    {role.is_system === 1 ? ' (系统)' : role.tenant_name ? ` (${role.tenant_name})` : ''}
                   </Option>
                 ))}
               </Select>
@@ -625,7 +626,8 @@ const UserManagement: React.FC = () => {
               <Select mode="multiple" placeholder="请选择平台角色" className="dark-select-multi">
                 {roles.map(role => (
                   <Option key={role.id} value={role.id}>
-                    {role.name}{role.is_system === 1 ? ' (系统)' : ''}
+                    {role.name}
+                    {role.is_system === 1 ? ' (系统)' : role.tenant_name ? ` (${role.tenant_name})` : ''}
                   </Option>
                 ))}
               </Select>

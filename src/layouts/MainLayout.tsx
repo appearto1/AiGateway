@@ -1,13 +1,78 @@
-import React from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { Layout, ConfigProvider, theme } from 'antd';
-import { Outlet, useLocation } from 'react-router-dom';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import TopHeader from '../components/TopHeader';
+import { getCurrentUserMenus } from '../services/api';
+
+/** 与 api.getCurrentUserMenus 返回的菜单项结构一致 */
+interface UserMenuItem {
+  id: string;
+  name: string;
+  type: 'directory' | 'menu';
+  path?: string;
+  permission?: string;
+  icon?: string;
+  sort?: number;
+  parent_id?: string;
+  children?: UserMenuItem[];
+}
+import { getToken } from '../services/auth';
 
 const { Content } = Layout;
 
+/** 从菜单树收集所有可访问的前端 path（type=menu 的 path） */
+function collectMenuPaths(items: UserMenuItem[] | undefined): string[] {
+  if (!items?.length) return [];
+  const paths: string[] = [];
+  function walk(nodes: UserMenuItem[]) {
+    for (const n of nodes) {
+      if (n.type === 'menu' && n.path) paths.push(n.path);
+      if (n.children?.length) walk(n.children);
+    }
+  }
+  walk(items);
+  return paths;
+}
+
+/** 当前 pathname 是否在允许的菜单路径内（精确或子路径） */
+function isPathAllowed(pathname: string, allowedPaths: string[]): boolean {
+  if (allowedPaths.length === 0) return true;
+  const normalized = pathname === '/' ? '/' : pathname.replace(/\/$/, '') || '/';
+  for (const p of allowedPaths) {
+    const base = p === '/' ? '/' : p.replace(/\/$/, '') || '/';
+    if (normalized === base) return true;
+    if (base !== '/' && normalized.startsWith(base + '/')) return true;
+  }
+  return false;
+}
+
 const MainLayout: React.FC = () => {
   const location = useLocation();
+  const navigate = useNavigate();
+  const [userMenus, setUserMenus] = useState<UserMenuItem[] | null>(null);
+
+  useEffect(() => {
+    if (!getToken()) return;
+    getCurrentUserMenus()
+      .then((res) => {
+        if (res.code === 200 && Array.isArray(res.data)) setUserMenus(res.data);
+        else setUserMenus([]);
+      })
+      .catch(() => setUserMenus([]));
+  }, []);
+
+  const allowedPaths = useMemo(() => collectMenuPaths(userMenus ?? undefined), [userMenus]);
+
+  useEffect(() => {
+    if (userMenus === null) return;
+    const pathname = location.pathname;
+    if (allowedPaths.length > 0 && !isPathAllowed(pathname, allowedPaths)) {
+      const first = allowedPaths.find((p) => p && p !== 'Layout');
+      navigate(first === '/' || !first ? '/' : first, { replace: true });
+    }
+  }, [userMenus, location.pathname, allowedPaths, navigate]);
+
   const isSkillsPage = location.pathname.startsWith('/skills');
   const isUserPage = location.pathname.includes('/settings/users');
   const isNoPaddingPage = isSkillsPage || isUserPage;
@@ -56,7 +121,7 @@ const MainLayout: React.FC = () => {
       }}
     >
       <Layout className="h-screen overflow-hidden bg-background-dark">
-        <Sidebar />
+        <Sidebar userMenus={userMenus ?? undefined} />
         <Layout className="bg-background-dark">
           <TopHeader />
           <Content className={`scroll-smooth ${isNoPaddingPage ? 'p-0 overflow-hidden' : 'p-8 overflow-y-auto'}`} id="main-content">

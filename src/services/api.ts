@@ -605,6 +605,25 @@ export const getMenuOptions = async () => {
     return response.data;
 };
 
+/** 当前用户可用的菜单树（根据角色组合的菜单并集，仅 directory + menu，用于侧栏） */
+export interface UserMenuItem {
+    id: string;
+    name: string;
+    type: 'directory' | 'menu';
+    path?: string;
+    permission?: string;
+    icon?: string;
+    sort?: number;
+    parent_id?: string;
+    children?: UserMenuItem[];
+}
+
+/** 获取当前用户菜单树（登录后根据角色显示） */
+export const getCurrentUserMenus = async (): Promise<{ code: number; msg?: string; data?: UserMenuItem[] }> => {
+    const response = await axios.get<{ code: number; msg?: string; data?: UserMenuItem[] }>(`${API_BASE_URL}/user/menus`);
+    return response.data;
+};
+
 // User API
 export interface UserData {
     id: string;
