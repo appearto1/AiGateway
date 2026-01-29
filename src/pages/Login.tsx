@@ -3,14 +3,28 @@ import { Form, Input, Button, Checkbox, message } from 'antd';
 import { UserOutlined, LockOutlined, EyeOutlined, EyeInvisibleOutlined, ArrowRightOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { login, getToken, setToken, setStoredUser, setRemember, getRemember } from '../services/auth';
+import { getSysConfig } from '../services/api';
 import './Login.css';
-
-const APP_VERSION = 'v2.4.0-stable';
 
 const Login: React.FC = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
+  const [sysConfig, setSysConfig] = useState<{ site_logo?: string; site_name?: string }>({});
+
+  useEffect(() => {
+    const fetchConfig = async () => {
+      try {
+        const res = await getSysConfig();
+        if (res.code === 200) {
+          setSysConfig(res.data);
+        }
+      } catch (error) {
+        console.error('Failed to fetch config:', error);
+      }
+    };
+    fetchConfig();
+  }, []);
 
   useEffect(() => {
     setRememberMe(getRemember());
@@ -51,9 +65,13 @@ const Login: React.FC = () => {
       <div className="gateway-login-content">
         <header className="gateway-login-header">
           <div className="gateway-login-logo">
-            <div className="gateway-login-logo-icon" />
+            {sysConfig.site_logo ? (
+              <img src={sysConfig.site_logo} alt="Logo" className="w-full h-full object-contain" />
+            ) : (
+              <div className="gateway-login-logo-icon" />
+            )}
           </div>
-          <h1 className="gateway-login-title">AI Infra Gateway</h1>
+          <h1 className="gateway-login-title">{sysConfig.site_name || 'AI Infra Gateway'}</h1>
           <p className="gateway-login-subtitle">企业级 AI 基础设施管理底座</p>
         </header>
 
@@ -114,7 +132,6 @@ const Login: React.FC = () => {
 
         <footer className="gateway-login-footer">
           <div>SECURE INFRASTRUCTURE NODE</div>
-          <div className="gateway-login-version">{APP_VERSION}</div>
         </footer>
       </div>
     </div>

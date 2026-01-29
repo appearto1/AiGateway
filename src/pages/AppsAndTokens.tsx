@@ -18,8 +18,7 @@ import {
   TreeSelect,
   Radio,
   Badge,
-  Tag,
-  Avatar
+  Tag
 } from 'antd';
 import { 
   SearchOutlined, 
@@ -663,140 +662,157 @@ const AppsAndTokens: React.FC = () => {
                 return (
                   <div 
                     key={app.id}
-                    className="p-5 rounded-2xl border transition-all bg-[#1a2632] border-[#233648] hover:border-indigo-500/40 hover:shadow-xl hover:shadow-indigo-900/10 group flex flex-col h-full relative"
+                    className="p-5 rounded-2xl border transition-all bg-[#1a2632] border-[#233648] hover:border-indigo-500/60 hover:shadow-2xl hover:shadow-indigo-900/20 group flex flex-col h-full relative overflow-hidden"
                   >
-                    <div className="flex justify-between items-start mb-4">
-                      <div className="flex items-center gap-3">
-                        <Avatar 
-                          shape="square" 
-                          size={44} 
-                          className={`${app.avatar_bg || 'bg-indigo-600'} rounded-xl shadow-lg shadow-black/20 flex items-center justify-center font-bold text-lg border border-white/10`}
-                        >
-                          {app.avatar_text || app.name.substring(0, 2).toUpperCase()}
-                        </Avatar>
+                    {/* Background Glow */}
+                    <div className={`absolute -top-24 -right-24 size-48 rounded-full blur-[80px] opacity-0 group-hover:opacity-20 transition-opacity pointer-events-none ${
+                      isAgent ? 'bg-indigo-500' : 'bg-blue-500'
+                    }`}></div>
+
+                    <div className="flex justify-between items-start mb-4 relative z-10">
+                      <div className="flex items-center gap-4">
+                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center overflow-hidden bg-gradient-to-br border border-white/5 shadow-inner shadow-black/20 ${
+                          app.avatar_bg || (isAgent ? 'from-indigo-600 to-indigo-900' : 'from-blue-600 to-blue-900')
+                        }`}>
+                          <span className="text-white font-black text-lg drop-shadow-md">
+                            {app.avatar_text || app.name.substring(0, 2).toUpperCase()}
+                          </span>
+                        </div>
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-0.5">
-                            <span className="text-white font-bold truncate text-base" title={app.name}>{app.name}</span>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-white font-bold truncate text-base tracking-tight" title={app.name}>{app.name}</span>
                           </div>
-                          <div className="flex items-center gap-1.5">
-                            <span className={`w-1.5 h-1.5 rounded-full ${app.status === 0 ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-slate-600'}`}></span>
-                            <span className={`text-[10px] font-bold uppercase tracking-wider ${app.status === 0 ? 'text-emerald-400' : 'text-slate-500'}`}>
-                              {app.status === 0 ? 'Active' : 'Disabled'}
+                          <div className="flex items-center">
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-black tracking-wider uppercase border ${
+                                app.status === 0 
+                                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
+                                : 'bg-slate-500/10 text-slate-500 border-slate-500/20'
+                            }`}>
+                                {app.status === 0 ? 'Active' : 'Disabled'}
                             </span>
                           </div>
                         </div>
                       </div>
                       <div className="opacity-0 group-hover:opacity-100 transition-all flex gap-1">
-                        <Tooltip title="配置">
+                        <Tooltip title="配置详情">
                           <Button 
                             size="small" 
                             type="text" 
-                            className="text-slate-500 hover:text-white hover:bg-white/5"
+                            className="text-slate-400 hover:text-white hover:bg-white/5"
                             onClick={() => handleEdit(app)}
                             icon={<SettingOutlined className="text-base" />}
                           />
                         </Tooltip>
+                        <Popconfirm title="确定要删除此应用吗？" onConfirm={() => handleDelete(app.id)}>
+                            <Button 
+                                danger
+                                size="small" 
+                                type="text"
+                                icon={<DeleteOutlined className="text-base" />}
+                                className="text-red-400/60 hover:text-red-400 hover:bg-red-400/5"
+                            />
+                        </Popconfirm>
                       </div>
                     </div>
 
-                    <div className="flex gap-2 mb-4">
+                    <div className="flex flex-wrap gap-2 mb-5 relative z-10">
                       <Tag 
-                        className={`m-0 text-[10px] border-0 px-2 py-0.5 rounded-lg font-bold uppercase tracking-tighter ${
-                          isAgent ? 'bg-indigo-500/10 text-indigo-400' : 'bg-blue-500/10 text-blue-400'
+                        className={`m-0 text-[10px] border px-2.5 py-0.5 rounded-lg font-black uppercase tracking-wider flex items-center shadow-sm ${
+                          isAgent 
+                          ? 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20' 
+                          : 'bg-blue-500/10 text-blue-400 border-blue-500/20'
                         }`}
                       >
-                        {isAgent ? <ThunderboltFilled className="mr-1" /> : <SyncOutlined className="mr-1" />}
-                        {isAgent ? 'Agent' : 'Proxy'}
+                        {isAgent ? <ThunderboltFilled className="mr-1.5 text-[12px]" /> : <SyncOutlined className="mr-1.5 text-[12px]" />}
+                        {isAgent ? 'Agent Mode' : 'Proxy Mode'}
                       </Tag>
                       {app.tenant_name && (
-                        <Tag className="m-0 text-[10px] border-0 bg-purple-500/10 text-purple-400 px-2 py-0.5 rounded-lg font-bold uppercase tracking-tighter">
-                          <TeamOutlined className="mr-1" /> {app.tenant_name}
+                        <Tag className="m-0 text-[10px] border bg-purple-500/10 text-purple-400 border-purple-500/20 px-2.5 py-0.5 rounded-lg font-black uppercase tracking-wider flex items-center shadow-sm">
+                          <TeamOutlined className="mr-1.5 text-[12px]" /> {app.tenant_name}
                         </Tag>
                       )}
                     </div>
 
-                    <div className="space-y-3 flex-1">
-                      <div>
-                        <div className="flex justify-between items-center mb-1">
-                          <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">App ID</span>
+                    <div className="space-y-4 flex-1 relative z-10">
+                      <div className="group/item">
+                        <div className="flex justify-between items-center mb-1.5">
+                          <span className="text-[10px] text-slate-500 font-black uppercase tracking-widest opacity-60 group-hover/item:opacity-100 transition-opacity">App ID</span>
                           <Tooltip title="点击复制 ID">
                             <CopyOutlined 
-                              className="text-slate-600 hover:text-indigo-400 cursor-pointer text-[10px]" 
+                              className="text-slate-600 hover:text-indigo-400 cursor-pointer text-[11px] transition-colors" 
                               onClick={() => handleCopy(app.id)}
                             />
                           </Tooltip>
                         </div>
-                        <div className="bg-[#111a22] px-2 py-1.5 rounded-lg border border-[#233648] text-slate-400 font-mono text-[10px] truncate select-all">
+                        <div className="bg-[#111a22] px-3 py-2 rounded-xl border border-[#233648] text-slate-300 font-mono text-[11px] truncate select-all group-hover/item:border-indigo-500/30 transition-colors">
                           {app.id}
                         </div>
                       </div>
 
-                      <div>
-                        <div className="flex justify-between items-center mb-1">
-                          <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">App Secret</span>
-                          <div className="flex gap-2">
+                      <div className="group/item">
+                        <div className="flex justify-between items-center mb-1.5">
+                          <span className="text-[10px] text-slate-500 font-black uppercase tracking-widest opacity-60 group-hover/item:opacity-100 transition-opacity">App Secret</span>
+                          <div className="flex gap-2.5">
                              <Tooltip title="复制完整密钥">
                                 <CopyOutlined 
-                                  className="text-slate-600 hover:text-indigo-400 cursor-pointer text-[10px]" 
+                                  className="text-slate-600 hover:text-indigo-400 cursor-pointer text-[11px] transition-colors" 
                                   onClick={() => handleCopy(fullKey)}
                                 />
                              </Tooltip>
-                             <Tooltip title="重置密钥">
-                                <Popconfirm title="确定要重置密钥吗？" onConfirm={() => handleRotateSecret(app.id)}>
-                                   <SyncOutlined className="text-slate-600 hover:text-amber-500 cursor-pointer text-[10px]" />
+                             <Tooltip title="重置密钥令牌">
+                                <Popconfirm title="重置后旧密钥将失效，确定继续吗？" onConfirm={() => handleRotateSecret(app.id)} okText="确定重置" cancelText="取消">
+                                   <SyncOutlined className="text-slate-600 hover:text-amber-500 cursor-pointer text-[11px] transition-colors" />
                                 </Popconfirm>
                              </Tooltip>
                           </div>
                         </div>
-                        <div className="bg-[#111a22] px-2 py-1.5 rounded-lg border border-[#233648] text-slate-500 font-mono text-[10px] truncate">
-                          {app.app_secret ? `${fullKey.substring(0, 10)}****************` : '未配置'}
+                        <div className="bg-[#111a22] px-3 py-2 rounded-xl border border-[#233648] text-slate-500 font-mono text-[11px] truncate group-hover/item:border-amber-500/30 transition-colors">
+                          {app.app_secret ? `${fullKey.substring(0, 10)}****************` : '未配置密钥'}
                         </div>
                       </div>
                     </div>
 
-                    <div className="mt-4 pt-4 border-t border-white/5">
+                    <div className="mt-5 pt-5 border-t border-white/5 relative z-10">
                       <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <div className="text-[9px] text-slate-500 font-bold uppercase tracking-tighter mb-1">今日 Tokens</div>
-                          <div className="text-emerald-400 font-mono font-bold text-sm">
+                        <div className="bg-emerald-500/5 p-2 rounded-xl border border-emerald-500/10">
+                          <div className="text-[9px] text-emerald-500/60 font-black uppercase tracking-wider mb-1">今日消耗 (Tokens)</div>
+                          <div className="text-emerald-400 font-mono font-black text-base leading-none">
                             {(Number(app.today_tokens) || 0).toLocaleString()}
                           </div>
                         </div>
-                        <div className="text-right">
-                          <div className="text-[9px] text-slate-500 font-bold uppercase tracking-tighter mb-1">配额用量</div>
-                          <div className="text-slate-300 font-mono font-bold text-sm">
+                        <div className="bg-slate-500/5 p-2 rounded-xl border border-white/5 text-right">
+                          <div className="text-[9px] text-slate-500 font-black uppercase tracking-wider mb-1">配额使用进度</div>
+                          <div className="text-slate-200 font-mono font-black text-sm leading-none">
                             {(() => {
                               const limit = Number(app.token_limit) || 0;
                               const used = Number(app.total_tokens) || 0;
-                              if (limit <= 0) return '无限制';
+                              if (limit <= 0) return 'UNLIMITED';
                               const pct = Math.min(100, Math.round((used / limit) * 100));
-                              return used > limit
-                                ? `${used.toLocaleString()} / ${limit.toLocaleString()} (已超)`
-                                : `${used.toLocaleString()} / ${limit.toLocaleString()} (${pct}%)`;
+                              return `${pct}%`;
                             })()}
+                          </div>
+                          <div className="mt-1.5 h-1 w-full bg-slate-800 rounded-full overflow-hidden">
+                              <div 
+                                className={`h-full rounded-full transition-all duration-1000 ${
+                                    (Number(app.total_tokens) || 0) > (Number(app.token_limit) || 0) ? 'bg-red-500' : 'bg-indigo-500'
+                                }`}
+                                style={{ width: `${Math.min(100, (Number(app.total_tokens) || 0) / (Number(app.token_limit) || 1) * 100)}%` }}
+                              ></div>
                           </div>
                         </div>
                       </div>
                     </div>
 
-                    <div className="mt-4 flex gap-2">
+                    <div className="mt-5 relative z-10">
                       <Button 
                         block 
-                        size="small" 
-                        icon={<BarChartOutlined />}
-                        className="bg-[#1a2632] border-[#233648] text-slate-400 hover:text-white hover:border-indigo-500/50 rounded-lg text-xs"
+                        size="middle" 
+                        icon={<AreaChartOutlined />}
+                        className="bg-[#1a2632] border-[#233648] text-slate-400 hover:text-white hover:border-indigo-500/50 hover:bg-indigo-500/5 rounded-xl text-xs font-bold transition-all h-10"
                         onClick={() => handleViewStats(app.id, app.name)}
                       >
-                        统计
+                        查看详细统计报表
                       </Button>
-                      <Popconfirm title="确定要删除此应用吗？" onConfirm={() => handleDelete(app.id)}>
-                        <Button 
-                          danger
-                          size="small" 
-                          icon={<DeleteOutlined />}
-                          className="bg-red-500/10 border-red-500/20 text-red-400 hover:bg-red-500 hover:text-white rounded-lg w-10 flex items-center justify-center"
-                        />
-                      </Popconfirm>
                     </div>
                   </div>
                 );

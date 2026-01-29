@@ -655,3 +655,14 @@ export const batchDeleteUsers = async (ids: string[]) => {
     const response = await axios.post(`${API_BASE_URL}/user/batch_delete`, { ids });
     return response.data;
 };
+
+// Config API
+export const getSysConfig = async () => {
+    const response = await axios.get(`${API_BASE_URL}/auth/config`);
+    return response.data;
+};
+
+export const updateSysConfig = async (data: { logo?: string; name?: string }) => {
+    const response = await axios.post(`${API_BASE_URL}/config/update`, data);
+    return response.data;
+};

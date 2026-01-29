@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Layout, Menu, Typography } from 'antd';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { getSysConfig } from '../services/api';
 import {
   AppstoreOutlined,
   DatabaseOutlined,
@@ -22,6 +23,21 @@ const Sidebar: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [selectedKeys, setSelectedKeys] = useState<string[]>(['dashboard']);
+  const [sysConfig, setSysConfig] = useState<{ site_logo?: string; site_name?: string }>({});
+
+  useEffect(() => {
+    const fetchConfig = async () => {
+      try {
+        const res = await getSysConfig();
+        if (res.code === 200) {
+          setSysConfig(res.data);
+        }
+      } catch (error) {
+        console.error('Failed to fetch config:', error);
+      }
+    };
+    fetchConfig();
+  }, []);
 
   // Sync selection with URL
   useEffect(() => {
@@ -89,12 +105,15 @@ const Sidebar: React.FC = () => {
         {/* Logo Section */}
         <div className="p-6 pb-2">
             <div className="flex items-center gap-3 mb-8 cursor-pointer" onClick={() => navigate('/')}>
-                <div className="size-10 rounded-lg bg-gradient-to-br from-primary to-blue-600 flex items-center justify-center shrink-0 shadow-lg shadow-blue-900/20 text-white">
-                    <DeploymentUnitOutlined style={{ fontSize: '24px' }} />
+                <div className="size-10 rounded-lg bg-gradient-to-br from-primary to-blue-600 flex items-center justify-center shrink-0 shadow-lg shadow-blue-900/20 text-white overflow-hidden">
+                    {sysConfig.site_logo ? (
+                        <img src={sysConfig.site_logo} alt="Logo" className="w-full h-full object-cover" />
+                    ) : (
+                        <DeploymentUnitOutlined style={{ fontSize: '24px' }} />
+                    )}
                 </div>
                 <div className="flex flex-col">
-                    <Title level={5} style={{ color: 'white', margin: 0, fontSize: '16px', lineHeight: 1.2 }}>AI Infra Gateway</Title>
-                    <Text className="text-slate-400 text-xs font-mono mt-0.5">v2.4.0-stable</Text>
+                    <Title level={5} style={{ color: 'white', margin: 0, fontSize: '16px', lineHeight: 1.2 }}>{sysConfig.site_name || 'AI Infra Gateway'}</Title>
                 </div>
             </div>
         </div>

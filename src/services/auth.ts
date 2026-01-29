@@ -116,3 +116,24 @@ export async function login(
   });
   return res.data;
 }
+
+/** 修改密码：先取公钥再加密新旧密码后提交 */
+export async function changePassword(
+  oldPassword: string,
+  newPassword: string
+): Promise<{ code: number; msg: string; data?: any }> {
+  const publicKey = await getPublicKey();
+  const encryptedOldPassword = encryptPassword(publicKey, oldPassword);
+  const encryptedNewPassword = encryptPassword(publicKey, newPassword);
+  
+  // 使用全局 axios 实例，因为它带了 X-Token 拦截器
+  const res = await axios.post<{
+    code: number;
+    msg: string;
+    data?: any;
+  }>(`${API_BASE_URL}/user/change_password`, {
+    encrypted_old_password: encryptedOldPassword,
+    encrypted_new_password: encryptedNewPassword,
+  });
+  return res.data;
+}
