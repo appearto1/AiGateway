@@ -428,7 +428,7 @@ const ChatApp: React.FC = () => {
         ...(settings.maxTokens > 0 ? { max_tokens: settings.maxTokens } : {}),
         stream: true,
         ...extraParams
-      } as ChatCompletionRequest, settings.appToken);
+      } as ChatCompletionRequest, token);
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
@@ -608,7 +608,7 @@ const ChatApp: React.FC = () => {
         // 新对话，使用第一条用户消息作为标题
         try {
           const title = prompt.slice(0, 30);
-          await saveChat(token, title, [...messages, userMsg, { ...assistantMsg, content: fullContent }]);
+          await saveChat(title, [...messages, userMsg, { ...assistantMsg, content: fullContent }], token);
           await loadChatHistory();
         } catch (e) {
           console.error('保存对话失败', e);
@@ -616,7 +616,7 @@ const ChatApp: React.FC = () => {
       } else if (currentChatId) {
         // 更新现有对话
         try {
-          await saveChat(token, chatHistory.find(h => h.id === currentChatId)?.title || '对话', [...messages, userMsg, { ...assistantMsg, content: fullContent }]);
+          await saveChat(chatHistory.find(h => h.id === currentChatId)?.title || '对话', [...messages, userMsg, { ...assistantMsg, content: fullContent }], token);
         } catch (e) {
           console.error('更新对话失败', e);
         }
@@ -647,7 +647,7 @@ const ChatApp: React.FC = () => {
 
   const handleDeleteChat = async (chatId: string) => {
     try {
-      await deleteChat(token, chatId);
+      await deleteChat(chatId, token);
       message.success('删除成功');
       await loadChatHistory();
       if (currentChatId === chatId) {

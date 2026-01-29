@@ -154,8 +154,10 @@ export const chatCompletionsStream = async (
         'Content-Type': 'application/json',
     };
     
-    if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
+    // 优先使用传入的 token，否则从 localStorage 获取
+    const authToken = token || localStorage.getItem(AUTH_TOKEN_KEY);
+    if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`;
     }
     
     if (providerId) {
@@ -370,6 +372,47 @@ export const getKnowledgeSkills = async (libraryId?: string) => {
 
 export const getKBForApp = async () => {
     const response = await axios.get(`${API_BASE_URL}/app/kb_data`);
+    return response.data;
+};
+
+export const createLibrary = async (data: { name: string; description?: string }) => {
+    const response = await axios.post(`${API_BASE_URL}/kb/library/add`, data);
+    return response.data;
+};
+
+export const updateLibrary = async (data: { id: string; name?: string; description?: string; modelConfig?: string }) => {
+    const response = await axios.post(`${API_BASE_URL}/kb/library/update`, data);
+    return response.data;
+};
+
+export const deleteLibrary = async (id: string) => {
+    const response = await axios.post(`${API_BASE_URL}/kb/library/delete`, { id });
+    return response.data;
+};
+
+export const createSkill = async (data: any) => {
+    const response = await axios.post(`${API_BASE_URL}/kb/skill/add`, data);
+    return response.data;
+};
+
+export const updateSkill = async (data: any) => {
+    const response = await axios.post(`${API_BASE_URL}/kb/skill/update`, data);
+    return response.data;
+};
+
+export const deleteSkill = async (id: string) => {
+    const response = await axios.post(`${API_BASE_URL}/kb/skill/delete`, { id });
+    return response.data;
+};
+
+export const uploadFile = async (file: File) => {
+    const formData = new FormData();
+    formData.append('files', file);
+    const response = await axios.post(`${API_BASE_URL}/upload`, formData, {
+        headers: {
+            'Content-Type': 'multipart/form-data',
+        },
+    });
     return response.data;
 };
 

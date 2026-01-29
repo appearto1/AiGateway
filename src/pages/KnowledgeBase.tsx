@@ -21,7 +21,18 @@ import {
 } from '@ant-design/icons';
 import { Input, Button, Tag, Modal, Upload, message, Tooltip, Select, Space } from 'antd';
 import type { UploadFile } from 'antd/es/upload/interface';
-import { getOpenAIModels } from '../services/api';
+import { 
+    getOpenAIModels, 
+    getKnowledgeLibraries, 
+    getKnowledgeSkills,
+    createLibrary,
+    updateLibrary,
+    deleteLibrary,
+    createSkill,
+    updateSkill,
+    deleteSkill,
+    uploadFile
+} from '../services/api';
 
 const { Dragger } = Upload;
 const { TextArea } = Input;
@@ -51,9 +62,9 @@ interface Library {
   count: number;
   icon: React.ReactNode;
   modelConfig?: string;
+  tenantId?: string;
+  tenantName?: string;
 }
-
-import { API_BASE_URL } from '../services/api';
 
 const KnowledgeBase: React.FC = () => {
   const navigate = useNavigate();
@@ -66,8 +77,7 @@ const KnowledgeBase: React.FC = () => {
 
   const fetchLibraries = async () => {
     try {
-        const res = await fetch(`${API_BASE_URL}/kb/libraries`);
-        const data = await res.json();
+        const data = await getKnowledgeLibraries();
         if (data.code === 200) {
             setLibraries(data.data.map((l: any) => ({
                 ...l,
@@ -89,10 +99,13 @@ const KnowledgeBase: React.FC = () => {
     if (!libId) return;
     setIsRefreshing(true);
     try {
-        const res = await fetch(`${API_BASE_URL}/kb/skills?libraryId=${libId}`);
-        const data = await res.json();
+        const data = await getKnowledgeSkills(libId);
         if (data.code === 200) {
-            setSkills(data.data || []);
+            // 映射字段：后端返回 createdTime，前端使用 createdAt
+            setSkills((data.data || []).map((skill: any) => ({
+                ...skill,
+                createdAt: skill.createdTime || skill.createdAt || ''
+            })));
         }
     } catch (e) {
         console.error(e);
@@ -130,16 +143,14 @@ const KnowledgeBase: React.FC = () => {
   const [selectedModel, setSelectedModel] = useState<string>('');
   const [isLoadingModels, setIsLoadingModels] = useState(false);
   
-  // Vision Model Settings State
-  const [visionAppToken, setVisionAppToken] = useState('');
+  // Vision Model Settings State（与上面共用同一个 key 拉取的模型列表）
   const [availableVisionModels, setAvailableVisionModels] = useState<string[]>([]);
   const [selectedVisionModel, setSelectedVisionModel] = useState<string>('');
-  const [isLoadingVisionModels, setIsLoadingVisionModels] = useState(false);
   const [visionConcurrency, setVisionConcurrency] = useState<number>(10);
 
   const fetchModelsByToken = async (token: string) => {
       if (!token) {
-          message.error('请输入应用令牌');
+          message.error('请输入 API Key');
           return;
       }
       try {
@@ -149,45 +160,20 @@ const KnowledgeBase: React.FC = () => {
           if (res.data && Array.isArray(res.data)) {
               const modelList = res.data.map((m: any) => m.id);
               setAvailableModels(modelList);
+              setAvailableVisionModels(modelList); // 视觉模型从同一列表选择
               if (modelList.length > 0 && !modelList.includes(selectedModel)) {
                   setSelectedModel(modelList[0]);
               }
-              message.success(`成功加载 ${modelList.length} 个授权模型`);
+              message.success(`成功加载 ${modelList.length} 个模型`);
           } else {
               throw new Error('获取授权模型失败：响应数据格式错误');
           }
       } catch (e: any) {
-          message.error(e.message || "Token 无效或获取模型失败");
+          message.error(e.message || "Key 无效或获取模型失败");
           setAvailableModels([]);
-      } finally {
-          setIsLoadingModels(false);
-      }
-  };
-
-  const fetchVisionModelsByToken = async (token: string) => {
-      if (!token) {
-          message.error('请输入应用令牌');
-          return;
-      }
-      try {
-          setIsLoadingVisionModels(true);
-          const res = await getOpenAIModels(token);
-          
-          if (res.data && Array.isArray(res.data)) {
-              const modelList = res.data.map((m: any) => m.id);
-              setAvailableVisionModels(modelList);
-              if (modelList.length > 0 && !modelList.includes(selectedVisionModel)) {
-                  setSelectedVisionModel(modelList[0]);
-              }
-              message.success(`成功加载 ${modelList.length} 个视觉识别模型`);
-          } else {
-              throw new Error('获取授权模型失败：响应数据格式错误');
-          }
-      } catch (e: any) {
-          message.error(e.message || "Token 无效或获取模型失败");
           setAvailableVisionModels([]);
       } finally {
-          setIsLoadingVisionModels(false);
+          setIsLoadingModels(false);
       }
   };
 
@@ -202,23 +188,18 @@ const KnowledgeBase: React.FC = () => {
           model: selectedModel
       };
       
-      // 如果配置了视觉识别模型，添加到配置中
-      if (selectedVisionModel && visionAppToken) {
+      // 视觉模型使用同一个 key，从拉取的模型列表中选择即可
+      if (selectedVisionModel) {
           config.visionModel = selectedVisionModel;
-          config.visionApiKey = visionAppToken;
-          config.visionConcurrency = visionConcurrency || 10; // 默认10
+          config.visionApiKey = appToken; // 与主 key 共用
+          config.visionConcurrency = visionConcurrency || 10;
       }
 
       try {
-        const res = await fetch(`${API_BASE_URL}/kb/library/update`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                id: selectedLibraryId,
-                modelConfig: JSON.stringify(config)
-            })
+        const data = await updateLibrary({
+            id: selectedLibraryId,
+            modelConfig: JSON.stringify(config)
         });
-         const data = await res.json();
         if (data.code === 200) {
              message.success('模型配置已保存');
              fetchLibraries(); // Refresh to update local state
@@ -238,23 +219,15 @@ const KnowledgeBase: React.FC = () => {
               const config = JSON.parse(lib.modelConfig);
               setAppToken(config.apiKey || '');
               setSelectedModel(config.model || '');
-              // If token exists, try to fetch models immediately to populate list
-              if (config.apiKey) {
-                  fetchModelsByToken(config.apiKey);
-              }
-              
-              // 加载视觉识别模型配置
-              setVisionAppToken(config.visionApiKey || '');
               setSelectedVisionModel(config.visionModel || '');
               setVisionConcurrency(config.visionConcurrency || 10);
-              if (config.visionApiKey) {
-                  fetchVisionModelsByToken(config.visionApiKey);
+              if (config.apiKey) {
+                  fetchModelsByToken(config.apiKey);
               }
           } catch (e) {
               console.error("Failed to parse model config", e);
               setAppToken('');
               setSelectedModel('');
-              setVisionAppToken('');
               setSelectedVisionModel('');
               setVisionConcurrency(10);
           }
@@ -262,7 +235,6 @@ const KnowledgeBase: React.FC = () => {
           setAppToken('');
           setSelectedModel('');
           setAvailableModels([]);
-          setVisionAppToken('');
           setSelectedVisionModel('');
           setVisionConcurrency(10);
           setAvailableVisionModels([]);
@@ -281,11 +253,7 @@ const KnowledgeBase: React.FC = () => {
     formData.append('files', file);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/upload`, {
-        method: 'POST',
-        body: formData,
-      });
-      const result = await response.json();
+      const result = await uploadFile(file);
       if (result.code === 200 && result.data && result.data.length > 0) {
         onSuccess(result.data[0]);
         message.success(`${file.name} 上传成功`);
@@ -310,15 +278,10 @@ const KnowledgeBase: React.FC = () => {
 
     if (libraryModalMode === 'create') {
         try {
-            const res = await fetch(`${API_BASE_URL}/kb/library/add`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    name: libraryForm.name,
-                    description: libraryForm.description
-                })
+            const data = await createLibrary({
+                name: libraryForm.name,
+                description: libraryForm.description
             });
-            const data = await res.json();
             if (data.code === 200) {
                  message.success('知识库创建成功');
                  fetchLibraries();
@@ -331,16 +294,11 @@ const KnowledgeBase: React.FC = () => {
         }
     } else {
          try {
-            const res = await fetch(`${API_BASE_URL}/kb/library/update`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    id: selectedLibraryId,
-                    name: libraryForm.name,
-                    description: libraryForm.description
-                })
+            const data = await updateLibrary({
+                id: selectedLibraryId,
+                name: libraryForm.name,
+                description: libraryForm.description
             });
-             const data = await res.json();
             if (data.code === 200) {
                  message.success('知识库更新成功');
                  fetchLibraries();
@@ -367,12 +325,7 @@ const KnowledgeBase: React.FC = () => {
       cancelButtonProps: { className: 'bg-transparent border-[#30363d] text-slate-300 hover:text-white hover:border-slate-500' },
       onOk: async () => {
           try {
-             const res = await fetch(`${API_BASE_URL}/kb/library/delete`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: selectedLibraryId })
-            }); 
-            const data = await res.json();
+            const data = await deleteLibrary(selectedLibraryId);
             if (data.code === 200) {
                 message.success('知识库已删除');
                 fetchLibraries();
@@ -411,18 +364,13 @@ const KnowledgeBase: React.FC = () => {
 
     if (modalMode === 'create') {
         try {
-             const res = await fetch(`${API_BASE_URL}/kb/skill/add`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    libraryId: selectedLibraryId,
-                    title: '正在生成新技能...', 
-                    skillId: `skill-${Date.now()}`,
-                    description: description,
-                    files: filesJson // Backend parses this string
-                })
+            const data = await createSkill({
+                libraryId: selectedLibraryId,
+                title: '正在生成新技能...', 
+                skillId: `skill-${Date.now()}`,
+                description: description,
+                files: filesJson // Backend parses this string
             });
-            const data = await res.json();
             if (data.code === 200) {
                 // Poll for status or just wait a bit and refresh
                 setTimeout(() => {
@@ -456,16 +404,12 @@ const KnowledgeBase: React.FC = () => {
         // So we can reuse `kb/skill/add` (CreateSkillWithAI) for regeneration!
         
         try {
-            await fetch(`${API_BASE_URL}/kb/skill/add`, { // Reuse add for regenerate
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    libraryId: selectedLibraryId,
-                    title: currentSkill.title, // Keep title or let AI overwrite? AI overwrites.
-                    skillId: currentSkill.skillId, // Keep same ID
-                    description: description,
-                    files: filesJson
-                })
+            await createSkill({ // Reuse add for regenerate
+                libraryId: selectedLibraryId,
+                title: currentSkill.title, // Keep title or let AI overwrite? AI overwrites.
+                skillId: currentSkill.skillId, // Keep same ID
+                description: description,
+                files: filesJson
             });
             
             setTimeout(() => {
@@ -549,12 +493,7 @@ const KnowledgeBase: React.FC = () => {
       cancelButtonProps: { className: 'bg-transparent border-[#30363d] text-slate-300 hover:text-white hover:border-slate-500' },
       onOk: async () => {
           try {
-             const res = await fetch(`${API_BASE_URL}/kb/skill/delete`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: skillId })
-            }); 
-            const data = await res.json();
+            const data = await deleteSkill(skillId);
             if (data.code === 200) {
                 message.success('技能已删除');
                 fetchSkills(selectedLibraryId);
@@ -599,14 +538,23 @@ const KnowledgeBase: React.FC = () => {
             <div 
               key={lib.id}
               onClick={() => setSelectedLibraryId(lib.id)}
-              className={`px-4 py-3 cursor-pointer flex items-center gap-3 hover:bg-[#1a2632] transition-colors border-l-2 ${
+              className={`px-4 py-3 cursor-pointer flex flex-col gap-1 hover:bg-[#1a2632] transition-colors border-l-2 ${
                 selectedLibraryId === lib.id 
-                  ? 'border-blue-500 bg-[#1a2632] text-blue-400' 
-                  : 'border-transparent text-slate-400'
+                  ? 'border-blue-500 bg-[#1a2632]' 
+                  : 'border-transparent'
               }`}
             >
-              <span className="text-lg">{lib.icon}</span>
-              <span className="text-sm font-medium">{lib.name}</span>
+              <div className="flex items-center gap-3">
+                <span className={`text-lg ${selectedLibraryId === lib.id ? 'text-blue-400' : 'text-slate-400'}`}>{lib.icon}</span>
+                <span className={`text-sm font-medium ${selectedLibraryId === lib.id ? 'text-blue-400' : 'text-slate-400'}`}>{lib.name}</span>
+              </div>
+              {lib.tenantName && (
+                <div className="ml-8">
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400/80 font-bold tracking-wider uppercase">
+                    {lib.tenantName}
+                  </span>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -617,30 +565,40 @@ const KnowledgeBase: React.FC = () => {
         {/* Header */}
         <div className="p-6 border-b border-[#233648]">
           <div className="flex justify-between items-start mb-6">
-            <div className="flex items-center gap-4">
-               <h1 className="text-2xl font-bold text-white m-0">{activeLibrary?.name || '未选择知识库'}</h1>
-               {activeLibrary && (
-                 <div className="flex items-center gap-1">
-                   <Tooltip title="编辑知识库信息">
-                     <Button 
-                       type="text" 
-                       size="small" 
-                       icon={<EditOutlined />} 
-                       className="text-slate-500 hover:text-white"
-                       onClick={() => openLibraryModal('edit')}
-                     />
-                   </Tooltip>
-                   <Tooltip title="删除当前知识库">
-                     <Button 
-                       type="text" 
-                       size="small" 
-                       icon={<DeleteOutlined />} 
-                       className="text-slate-500 hover:text-red-400"
-                       onClick={handleDeleteLibrary}
-                     />
-                   </Tooltip>
-                 </div>
-               )}
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-4">
+                <h1 className="text-2xl font-bold text-white m-0">{activeLibrary?.name || '未选择知识库'}</h1>
+                {activeLibrary && (
+                  <div className="flex items-center gap-1">
+                    <Tooltip title="编辑知识库信息">
+                      <Button 
+                        type="text" 
+                        size="small" 
+                        icon={<EditOutlined />} 
+                        className="text-slate-500 hover:text-white"
+                        onClick={() => openLibraryModal('edit')}
+                      />
+                    </Tooltip>
+                    <Tooltip title="删除当前知识库">
+                      <Button 
+                        type="text" 
+                        size="small" 
+                        icon={<DeleteOutlined />} 
+                        className="text-slate-500 hover:text-red-400"
+                        onClick={handleDeleteLibrary}
+                      />
+                    </Tooltip>
+                  </div>
+                )}
+              </div>
+              {activeLibrary?.tenantName && (
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">OWNER</span>
+                  <span className="text-xs font-bold text-purple-400/90 bg-purple-500/5 px-2 py-0.5 rounded border border-purple-500/10">
+                    {activeLibrary.tenantName}
+                  </span>
+                </div>
+              )}
             </div>
             <div className="flex gap-3">
               <Input 
@@ -660,7 +618,7 @@ const KnowledgeBase: React.FC = () => {
                 {activeLibrary?.description || '暂无描述'}
               </p>
               <p className="text-slate-500 text-sm">
-                该库已编译为一系列可执行的 Agent 技能。每个技能都包含独立的指令集、知识上下文和工具定义，遵循 Claude Agent Skills 规范。技能一旦更新并发布，关联的智能体将能够通过 Tool Calling 接口即时调用相关知识。
+                该知识库包含结构化的知识内容、文档资源和上下文信息。内容一旦更新并发布，关联的智能体将能够通过相关接口即时访问和调用这些知识。
               </p>
             </div>
             <div className="text-right">
@@ -745,10 +703,11 @@ const KnowledgeBase: React.FC = () => {
 
                 <div className="px-5 py-3 border-t border-[#30363d] flex justify-between items-center bg-[#161b22]/50">
                    <div className="text-xs text-slate-500 font-mono">
-                     Created: {skill.createdAt}
+                     Created: {skill.createdAt || skill.createdTime || '未知'}
                    </div>
                    <div className="flex gap-1">
-                     <Tooltip title="编辑">
+                     {/* 编辑功能暂时隐藏 */}
+                     {/* <Tooltip title="编辑">
                        <Button 
                          size="small" 
                          type="text"
@@ -757,7 +716,7 @@ const KnowledgeBase: React.FC = () => {
                          onClick={() => navigate(`/skills/${skill.id}`)}
                          disabled={skill.status === 0}
                        />
-                     </Tooltip>
+                     </Tooltip> */}
                      <Tooltip title="重新生成">
                        <Button 
                          size="small" 
@@ -949,7 +908,7 @@ const KnowledgeBase: React.FC = () => {
         <div className="space-y-6">
             <div>
               <div className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-2 flex justify-between items-center">
-                <span>应用令牌 (App Token)</span>
+                <span>API Key</span>
                 <Tooltip title="输入 appid_secret 格式的令牌以获取授权模型">
                   <InfoCircleOutlined className="text-slate-500 cursor-help" />
                 </Tooltip>
@@ -988,31 +947,12 @@ const KnowledgeBase: React.FC = () => {
             <div className="border-t border-[#30363d] pt-6">
               <div className="text-slate-300 text-sm font-semibold mb-4 flex items-center gap-2">
                 <span>视觉识别模型（可选）</span>
-                <Tooltip title="用于识别PDF中的图片内容，如果PDF包含图片，系统会自动使用此模型识别">
+                <Tooltip title="用于识别PDF中的图片内容，使用上方同一 Key 拉取的模型列表中选择">
                   <InfoCircleOutlined className="text-slate-500 cursor-help" />
                 </Tooltip>
               </div>
               
               <div className="space-y-4">
-                <div>
-                  <div className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">视觉识别模型令牌</div>
-                  <Space.Compact className="w-full">
-                    <Input.Password 
-                      value={visionAppToken}
-                      onChange={(e) => setVisionAppToken(e.target.value)}
-                      placeholder="appid_secret（可选）"
-                      className="bg-[#161b22] border-[#30363d] text-white placeholder:text-slate-600"
-                    />
-                    <Button 
-                        type="primary" 
-                        icon={<SyncOutlined spin={isLoadingVisionModels} />} 
-                        onClick={() => fetchVisionModelsByToken(visionAppToken)}
-                        className="bg-blue-600 border-blue-600 hover:bg-blue-500"
-                        title="加载视觉识别模型"
-                    />
-                  </Space.Compact>
-                </div>
-                
                 <div>
                   <div className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">选择视觉识别模型</div>
                   <Select 
@@ -1020,7 +960,7 @@ const KnowledgeBase: React.FC = () => {
                     onChange={setSelectedVisionModel}
                     className="w-full"
                     options={availableVisionModels.map(m => ({ value: m, label: m }))}
-                    placeholder={availableVisionModels.length > 0 ? "选择视觉识别模型" : "请先输入令牌加载模型"}
+                    placeholder={availableVisionModels.length > 0 ? "选择视觉识别模型" : "请先输入 Key 并加载模型"}
                     disabled={availableVisionModels.length === 0}
                     allowClear
                     style={{ backgroundColor: '#161b22' }}

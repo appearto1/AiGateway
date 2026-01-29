@@ -2,6 +2,10 @@ import axios from 'axios';
 import JSEncrypt from 'jsencrypt';
 import { API_BASE_URL } from './api';
 
+// 使用统一的 axios 实例（带拦截器）
+// 创建一个独立的 axios 实例用于登录相关接口（不需要 token）
+const authAxios = axios.create();
+
 const AUTH_TOKEN_KEY = 'ai_gateway_token';
 const AUTH_USER_KEY = 'ai_gateway_user';
 const REMEMBER_KEY = 'ai_gateway_remember';
@@ -77,7 +81,7 @@ export function setRemember(remember: boolean): void {
 
 /** 获取 RSA 公钥 */
 export async function getPublicKey(): Promise<string> {
-  const res = await axios.get<{ code: number; data?: { public_key: string }; msg: string }>(
+  const res = await authAxios.get<{ code: number; data?: { public_key: string }; msg: string }>(
     `${API_BASE_URL}/auth/public_key`
   );
   if (res.data?.code !== 200 || !res.data?.data?.public_key) {
@@ -102,7 +106,7 @@ export async function login(
 ): Promise<{ code: number; msg: string; data?: LoginResult }> {
   const publicKey = await getPublicKey();
   const encryptedPassword = encryptPassword(publicKey, password);
-  const res = await axios.post<{
+  const res = await authAxios.post<{
     code: number;
     msg: string;
     data?: LoginResult;
