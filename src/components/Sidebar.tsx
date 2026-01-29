@@ -116,7 +116,7 @@ const Sidebar: React.FC = () => {
                     { type: 'divider', style: { borderColor: '#233648', margin: '10px 0' } },
                     { 
                         type: 'group', 
-                        label: <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest pl-0">组织架构</span>, 
+                        label: <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest pl-0">系统管理</span>, 
                         children: [
                             { key: 'org', icon: <ApartmentOutlined />, label: '组织管理 (Org)' },
                             { key: 'users', icon: <UserOutlined />, label: '用户管理' },
