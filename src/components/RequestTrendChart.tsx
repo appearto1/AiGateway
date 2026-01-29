@@ -2,15 +2,13 @@ import React from 'react';
 import { AreaChart, Area, Tooltip, ResponsiveContainer, XAxis, YAxis } from 'recharts';
 
 interface RequestTrendChartProps {
-    data: any[];
+    data?: any[] | null;
 }
 
-const RequestTrendChart: React.FC<RequestTrendChartProps> = ({ data = [] }) => {
-  // Transform data if needed, or assume parent passed correct format
-  // Backend returns: { time: "2023-10-27 14", request_count: 10, total_tokens: 100 }
-  // We want to show request_count or tokens? Let's show request_count for now.
-  
-  const chartData = data.map(item => {
+const RequestTrendChart: React.FC<RequestTrendChartProps> = ({ data }) => {
+  // Transform data if needed; guard against null/undefined (parent may pass trendData before fetch)
+  const safeData = data ?? [];
+  const chartData = safeData.map(item => {
       // Backend returns "YYYY-MM-DD HH"
       const timeStr = item.time || "";
       const hour = timeStr.length >= 13 ? timeStr.substring(11, 13) : timeStr;
