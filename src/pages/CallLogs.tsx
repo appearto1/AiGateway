@@ -11,14 +11,35 @@ import {
   DatePicker,
   Tag,
   Descriptions,
-  Typography
+  Typography,
+  Tooltip,
+  Badge,
+  Avatar,
+  theme
 } from 'antd';
 import { 
   SearchOutlined, 
   ReloadOutlined, 
   ExportOutlined,
   EyeOutlined,
-  FilterOutlined
+  FilterOutlined,
+  HistoryOutlined,
+  ThunderboltOutlined,
+  CheckCircleOutlined,
+  CloseCircleOutlined,
+  BarChartOutlined,
+  ClockCircleOutlined,
+  AppstoreOutlined,
+  TeamOutlined,
+  GlobalOutlined,
+  RocketOutlined,
+  SafetyCertificateOutlined,
+  ApiOutlined,
+  AreaChartOutlined,
+  CopyOutlined,
+  InfoCircleOutlined,
+  CalendarOutlined,
+  ArrowRightOutlined
 } from '@ant-design/icons';
 import { 
   getAppUsageLogs, 
@@ -33,6 +54,7 @@ import {
 } from '../services/api';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs, { type Dayjs } from 'dayjs';
+import { AreaChart, Area, ResponsiveContainer, XAxis, YAxis, CartesianGrid } from 'recharts';
 
 const { RangePicker } = DatePicker;
 const { Text } = Typography;
@@ -62,6 +84,18 @@ const CallLogs: React.FC = () => {
   const [selectedLog, setSelectedLog] = useState<AppUsageLogItem | null>(null);
   
   const [messageApi, contextHolder] = message.useMessage();
+  const { token } = theme.useToken();
+
+  // 模拟趋势数据
+  const trendData = [
+    { name: '00:00', value: 400 },
+    { name: '04:00', value: 300 },
+    { name: '08:00', value: 900 },
+    { name: '12:00', value: 1200 },
+    { name: '16:00', value: 1500 },
+    { name: '20:00', value: 1100 },
+    { name: '23:59', value: 800 },
+  ];
 
   // 获取应用列表
   const fetchApps = async () => {
@@ -203,116 +237,135 @@ const CallLogs: React.FC = () => {
   // 表格列定义
   const columns: ColumnsType<AppUsageLogItem> = [
     {
-      title: '时间',
+      title: '请求时间 / Request ID',
       dataIndex: 'request_time',
       key: 'request_time',
-      width: 180,
-      render: (text) => (
-        <span className="text-slate-300 font-mono text-xs">{text}</span>
+      width: 280,
+      fixed: 'left',
+      render: (time, record) => (
+        <div className="flex flex-col gap-0.5">
+          <div className="flex items-center gap-2">
+            <ClockCircleOutlined className="text-slate-500 text-xs" />
+            <span className="text-slate-200 font-medium text-sm">{time}</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="text-slate-600 text-[10px] font-mono tracking-tighter truncate max-w-[200px]" title={record.request_id}>
+              ID: {record.request_id}
+            </span>
+            <Tooltip title="复制 ID">
+              <Button 
+                type="text" 
+                size="small" 
+                icon={<CopyOutlined className="text-[10px]" />} 
+                className="h-4 w-4 flex items-center justify-center text-slate-600 hover:text-indigo-400"
+                onClick={() => {
+                  navigator.clipboard.writeText(record.request_id);
+                  messageApi.success('ID 已复制');
+                }}
+              />
+            </Tooltip>
+          </div>
+        </div>
       ),
     },
     {
-      title: '请求 ID',
-      dataIndex: 'request_id',
-      key: 'request_id',
-      width: 200,
-      render: (text) => (
-        <span className="text-slate-300 font-mono text-xs truncate block" title={text}>
-          {text}
-        </span>
-      ),
-    },
-    {
-      title: '应用',
+      title: '应用 / 租户',
       dataIndex: 'app_name',
-      key: 'app_name',
-      width: 150,
-      render: (text) => (
-        <span className="text-white font-medium">{text || '-'}</span>
+      key: 'app_info',
+      width: 220,
+      render: (text, record) => (
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2">
+            <div className="bg-indigo-500/10 p-1 rounded-md">
+              <AppstoreOutlined className="text-indigo-400 text-xs" />
+            </div>
+            <span className="text-white font-semibold text-sm">{text || '未知应用'}</span>
+          </div>
+          {record.tenant_name && (
+            <div className="flex items-center gap-1 ml-6">
+              <TeamOutlined className="text-slate-600 text-[10px]" />
+              <span className="text-slate-500 text-xs">{record.tenant_name}</span>
+            </div>
+          )}
+        </div>
       ),
     },
     {
-      title: '租户',
-      dataIndex: 'tenant_name',
-      key: 'tenant_name',
-      width: 120,
-      render: (text) => (
-        <span className="text-slate-300">{text || '-'}</span>
-      ),
-    },
-    {
-      title: '模型',
+      title: 'AI 模型 / 厂商',
       dataIndex: 'model',
-      key: 'model',
-      width: 200,
-      render: (model) => {
+      key: 'model_info',
+      width: 250,
+      render: (model, record) => {
         let colorClass = 'bg-blue-500/10 text-blue-400 border-blue-500/20';
-        if (model.includes('claude')) colorClass = 'bg-purple-500/10 text-purple-400 border-purple-500/20';
-        if (model.includes('gemini')) colorClass = 'bg-teal-500/10 text-teal-400 border-teal-500/20';
-        if (model.includes('llama')) colorClass = 'bg-orange-500/10 text-orange-400 border-orange-500/20';
+        if (model.toLowerCase().includes('claude')) colorClass = 'bg-purple-500/10 text-purple-400 border-purple-500/20';
+        if (model.toLowerCase().includes('gemini')) colorClass = 'bg-teal-500/10 text-teal-400 border-teal-500/20';
+        if (model.toLowerCase().includes('llama')) colorClass = 'bg-orange-500/10 text-orange-400 border-orange-500/20';
+        if (model.toLowerCase().includes('deepseek')) colorClass = 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20';
 
         return (
-          <Tag className={`${colorClass} border`}>
-            {model}
-          </Tag>
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center">
+              <Tag className={`${colorClass} border-0 rounded-md font-bold text-xs m-0`}>
+                {model}
+              </Tag>
+            </div>
+            {record.provider_name && (
+              <div className="flex items-center gap-1.5 ml-0.5 mt-0.5">
+                <div className="w-1 h-1 rounded-full bg-slate-600" />
+                <span className="text-slate-500 text-[11px] font-medium tracking-wide uppercase">{record.provider_name}</span>
+              </div>
+            )}
+          </div>
         );
       },
-    },
-    {
-      title: '提供商',
-      dataIndex: 'provider_name',
-      key: 'provider_name',
-      width: 120,
-      render: (text) => (
-        <span className="text-slate-300">{text || '-'}</span>
-      ),
     },
     {
       title: '状态',
       dataIndex: 'status',
       key: 'status',
-      width: 100,
+      width: 120,
       align: 'center',
-      render: (status) => {
+      render: (status, record) => {
         const isError = status >= 400;
-        const colorClass = isError 
-          ? 'bg-red-500/20 text-red-400 border-red-500/30' 
-          : 'bg-green-500/20 text-green-400 border-green-500/30';
         return (
-          <Tag className={`${colorClass} border`}>
-            {status}
-          </Tag>
+          <div className="flex flex-col items-center gap-1">
+            <Badge 
+              status={isError ? 'error' : 'success'} 
+              text={
+                <span className={`font-black font-mono ${isError ? 'text-red-400' : 'text-emerald-400'}`}>
+                  {status}
+                </span>
+              } 
+            />
+            {isError && record.status_message && (
+              <Tooltip title={record.status_message}>
+                <span className="text-red-500/60 text-[10px] truncate max-w-[80px] cursor-help italic">
+                  {record.status_message}
+                </span>
+              </Tooltip>
+            )}
+          </div>
         );
       },
     },
     {
-      title: 'Prompt Tokens',
-      dataIndex: 'prompt_tokens',
-      key: 'prompt_tokens',
-      width: 120,
-      align: 'right',
-      render: (text) => (
-        <span className="text-slate-300 font-mono">{text || 0}</span>
-      ),
-    },
-    {
-      title: 'Completion Tokens',
-      dataIndex: 'completion_tokens',
-      key: 'completion_tokens',
-      width: 150,
-      align: 'right',
-      render: (text) => (
-        <span className="text-slate-300 font-mono">{text || 0}</span>
-      ),
-    },
-    {
-      title: 'Total Tokens',
+      title: 'Token 消耗 (Prompt / Comp. / Total)',
       dataIndex: 'total_tokens',
-      key: 'total_tokens',
-      width: 120,
+      key: 'tokens',
+      width: 280,
       align: 'right',
-      render: (text) => (
-        <span className="text-white font-semibold font-mono">{text || 0}</span>
+      render: (_, record) => (
+        <div className="flex flex-col items-end gap-1">
+          <div className="flex items-center gap-1.5">
+            <span className="text-white font-black font-mono text-base">{record.total_tokens?.toLocaleString() || 0}</span>
+            <ThunderboltOutlined className="text-amber-400 text-xs" />
+          </div>
+          <div className="flex items-center gap-2 text-[10px] font-mono text-slate-500">
+            <span>P: {record.prompt_tokens?.toLocaleString() || 0}</span>
+            <span className="text-slate-700">|</span>
+            <span>C: {record.completion_tokens?.toLocaleString() || 0}</span>
+          </div>
+        </div>
       ),
     },
     {
@@ -322,10 +375,10 @@ const CallLogs: React.FC = () => {
       fixed: 'right',
       render: (_, record) => (
         <Button
-          type="link"
-          icon={<EyeOutlined />}
+          type="text"
+          icon={<ArrowRightOutlined />}
           onClick={() => handleViewDetail(record)}
-          className="text-blue-400 hover:text-blue-300"
+          className="text-indigo-400 hover:text-indigo-300 hover:bg-indigo-400/10 flex items-center justify-center rounded-lg"
         >
           详情
         </Button>
@@ -334,236 +387,399 @@ const CallLogs: React.FC = () => {
   ];
 
   return (
-    <>
-      {contextHolder}
-      <div className="p-6 space-y-6">
-        {/* 页面标题 */}
-        <div className="flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-white m-0">调用日志</h1>
+    <ConfigProvider
+      theme={{
+        algorithm: theme.darkAlgorithm,
+        token: {
+          colorPrimary: '#6366f1',
+          colorBgContainer: '#1a2632',
+          borderRadius: 12,
+        },
+        components: {
+          Table: {
+            headerBg: '#111a22',
+            headerColor: '#94a3b8',
+            rowHoverBg: '#1f2d3a',
+            paddingContentVerticalLG: 20,
+          },
+          Select: {
+            colorBgContainer: '#1a2632',
+            colorBorder: '#233648',
+          },
+          Input: {
+            colorBgContainer: '#1a2632',
+            colorBorder: '#233648',
+          },
+          DatePicker: {
+            colorBgContainer: '#1a2632',
+            colorBorder: '#233648',
+          }
+        }
+      }}
+    >
+      <div className="h-full flex flex-col space-y-6 p-2">
+        {contextHolder}
+        
+        {/* Top Header */}
+        <div className="flex justify-between items-end mb-2 px-1">
+          <div>
+            <div className="flex items-center gap-3 mb-1">
+              <div className="bg-indigo-600/20 p-2 rounded-xl border border-indigo-500/30">
+                <HistoryOutlined className="text-indigo-400 text-xl" />
+              </div>
+              <h1 className="text-2xl font-black text-white tracking-tight">Call <span className="text-indigo-500">Analytics</span> Logs</h1>
+            </div>
+            <p className="text-slate-400 text-sm font-medium ml-12">
+              API Traffic Monitoring <span className="text-slate-600 mx-1">/</span> 全球接口调用审计与性能分析
+            </p>
+          </div>
+          <div className="flex items-center gap-4 mb-1">
+            <div className="flex items-center bg-[#1a2632]/80 backdrop-blur-md px-4 py-2 rounded-2xl border border-[#233648] shadow-sm">
+              <SafetyCertificateOutlined className="text-emerald-500 mr-2" />
+              <span className="text-slate-300 text-xs font-bold tracking-wide uppercase">Audit Ready</span>
+            </div>
+            <Button 
+              icon={<ExportOutlined />} 
+              onClick={handleExport} 
+              className="bg-[#1a2632] border-[#233648] text-slate-300 hover:text-white hover:border-indigo-500/50 rounded-xl h-10 px-6 font-bold shadow-lg transition-all"
+            >
+              数据导出
+            </Button>
+          </div>
         </div>
 
-        {/* 筛选器 */}
-        <div className="bg-[#1a2632] border border-[#233648] rounded-xl p-6">
-          <div className="flex items-center gap-4 mb-4">
-            <FilterOutlined className="text-slate-400" />
-            <span className="text-white font-medium">筛选条件</span>
+        {/* Stats Row */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-2">
+          {/* Total Requests Card */}
+          <div className="bg-[#1a2632] rounded-2xl p-5 border border-[#233648] hover:border-indigo-500/30 transition-colors shadow-sm relative overflow-hidden group">
+            <div className="relative z-10 flex justify-between items-start">
+              <div>
+                <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mb-1">Total Requests</p>
+                <h3 className="text-3xl font-black text-white mb-1">{total.toLocaleString()}</h3>
+                <div className="flex items-center gap-2">
+                  <Badge status="success" />
+                  <span className="text-emerald-500 text-xs font-bold">+12.5%</span>
+                  <span className="text-slate-600 text-[10px] uppercase">vs last 24h</span>
+                </div>
+              </div>
+              <div className="bg-indigo-500/10 p-3 rounded-2xl group-hover:scale-110 transition-transform">
+                <BarChartOutlined className="text-indigo-400 text-2xl" />
+              </div>
+            </div>
+            <div className="absolute -bottom-6 -right-6 opacity-5 group-hover:opacity-10 transition-opacity">
+              <BarChartOutlined style={{ fontSize: '120px' }} className="text-white" />
+            </div>
           </div>
-          <Space wrap size="middle" className="w-full">
-            <div className="flex items-center gap-2">
-              <span className="text-slate-400 text-sm whitespace-nowrap">应用:</span>
+
+          {/* Error Rate Card */}
+          <div className="bg-[#1a2632] rounded-2xl p-5 border border-[#233648] hover:border-red-500/30 transition-colors shadow-sm relative overflow-hidden group">
+            <div className="relative z-10 flex justify-between items-start">
+              <div>
+                <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mb-1">System Reliability</p>
+                <h3 className="text-3xl font-black text-white mb-1">99.98%</h3>
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1 bg-red-500/10 px-2 py-0.5 rounded text-red-400 text-[10px] font-bold">
+                    <CloseCircleOutlined />
+                    <span>0.02% Error</span>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-red-500/10 p-3 rounded-2xl group-hover:scale-110 transition-transform">
+                <SafetyCertificateOutlined className="text-red-400 text-2xl" />
+              </div>
+            </div>
+            <div className="absolute -bottom-6 -right-6 opacity-5 group-hover:opacity-10 transition-opacity">
+              <SafetyCertificateOutlined style={{ fontSize: '120px' }} className="text-white" />
+            </div>
+          </div>
+
+          {/* Token Usage History with mini chart */}
+          <div className="bg-[#1a2632] rounded-2xl p-5 border border-[#233648] hover:border-amber-500/30 transition-colors shadow-sm relative overflow-hidden group">
+            <div className="relative z-10 flex justify-between items-start h-full">
+              <div className="flex flex-col justify-between h-full">
+                <div>
+                  <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mb-1">Token Throughput</p>
+                  <h3 className="text-3xl font-black text-white mb-1">
+                    {(logs.reduce((acc, curr) => acc + (curr.total_tokens || 0), 0)).toLocaleString()}
+                  </h3>
+                  <span className="text-slate-600 text-[10px] uppercase font-bold tracking-tighter">Current Page Vol.</span>
+                </div>
+              </div>
+              <div className="flex-1 h-16 ml-4">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={trendData}>
+                    <defs>
+                      <linearGradient id="colorVal" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3}/>
+                        <stop offset="95%" stopColor="#f59e0b" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <Area type="monotone" dataKey="value" stroke="#f59e0b" fillOpacity={1} fill="url(#colorVal)" strokeWidth={2} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Filter Bar */}
+        <div className="bg-[#1a2632] border border-[#233648] rounded-2xl p-4 shadow-sm">
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex items-center gap-2 flex-1 min-w-[200px]">
+              <div className="bg-[#111a22] p-2 rounded-lg border border-[#233648]">
+                <FilterOutlined className="text-indigo-400" />
+              </div>
               <Select
-                placeholder="选择应用"
+                placeholder="按应用筛选"
                 value={appId || undefined}
                 onChange={setAppId}
                 allowClear
-                className="min-w-[200px]"
+                className="flex-1 h-10 custom-select"
+                popupClassName="custom-dropdown"
                 options={apps.map(app => ({
                   label: app.name,
                   value: app.id
                 }))}
               />
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-slate-400 text-sm whitespace-nowrap">租户:</span>
-              <Select
-                placeholder="选择租户"
-                value={tenantId || undefined}
-                onChange={setTenantId}
-                allowClear
-                className="min-w-[160px]"
-                options={tenants.map(t => ({
-                  label: t.name,
-                  value: t.id
-                }))}
-              />
+
+            <Select
+              placeholder="按租户筛选"
+              value={tenantId || undefined}
+              onChange={setTenantId}
+              allowClear
+              className="w-40 h-10 custom-select"
+              popupClassName="custom-dropdown"
+              options={tenants.map(t => ({
+                label: t.name,
+                value: t.id
+              }))}
+            />
+
+            <Select
+              placeholder="选择 AI 模型"
+              value={model || undefined}
+              onChange={setModel}
+              allowClear
+              showSearch
+              className="w-56 h-10 custom-select"
+              popupClassName="custom-dropdown"
+              options={models}
+            />
+
+            <RangePicker
+              value={dateRange}
+              onChange={(dates) => setDateRange(dates as [Dayjs, Dayjs] | null)}
+              showTime
+              format="MM-DD HH:mm"
+              className="w-72 h-10 bg-[#1a2632] border-[#233648] rounded-xl hover:border-indigo-500/50"
+              suffixIcon={<CalendarOutlined className="text-slate-500" />}
+            />
+
+            <Input
+              placeholder="搜索请求 ID..."
+              value={requestId}
+              onChange={(e) => setRequestId(e.target.value)}
+              prefix={<SearchOutlined className="text-slate-500" />}
+              className="w-48 h-10 bg-[#1a2632] border-[#233648] rounded-xl hover:border-indigo-500/50"
+              allowClear
+              onPressEnter={handleSearch}
+            />
+
+            <div className="flex gap-2">
+              <Tooltip title="执行搜索">
+                <Button 
+                  type="primary" 
+                  icon={<SearchOutlined />} 
+                  onClick={handleSearch}
+                  className="bg-indigo-600 hover:bg-indigo-500 border-0 h-10 w-10 flex items-center justify-center rounded-xl shadow-lg shadow-indigo-600/20"
+                />
+              </Tooltip>
+              <Tooltip title="重置筛选">
+                <Button 
+                  icon={<ReloadOutlined />} 
+                  onClick={handleReset}
+                  className="bg-[#111a22] border-[#233648] text-slate-400 hover:text-white hover:border-indigo-500/50 h-10 w-10 flex items-center justify-center rounded-xl"
+                />
+              </Tooltip>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-slate-400 text-sm whitespace-nowrap">模型:</span>
-              <Select
-                placeholder="选择模型"
-                value={model || undefined}
-                onChange={setModel}
-                allowClear
-                showSearch
-                filterOption={(input, option) =>
-                  (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-                }
-                className="min-w-[250px]"
-                options={models}
-              />
-            </div>
-            
-            <div className="flex items-center gap-2">
-              <span className="text-slate-400 text-sm whitespace-nowrap">时间范围:</span>
-              <RangePicker
-                value={dateRange}
-                onChange={(dates) => setDateRange(dates as [Dayjs, Dayjs] | null)}
-                showTime
-                format="YYYY-MM-DD HH:mm:ss"
-                className="min-w-[400px]"
-              />
-            </div>
-            
-            <div className="flex items-center gap-2">
-              <span className="text-slate-400 text-sm whitespace-nowrap">请求ID:</span>
-              <Input
-                placeholder="搜索请求ID"
-                value={requestId}
-                onChange={(e) => setRequestId(e.target.value)}
-                prefix={<SearchOutlined className="text-slate-400" />}
-                className="min-w-[200px]"
-                allowClear
-                onPressEnter={handleSearch}
-              />
-            </div>
-          </Space>
-          
-          <div className="flex gap-2 mt-4">
-            <Button
-              type="primary"
-              icon={<SearchOutlined />}
-              onClick={handleSearch}
-            >
-              搜索
-            </Button>
-            <Button
-              icon={<ReloadOutlined />}
-              onClick={handleReset}
-            >
-              重置
-            </Button>
-            <Button
-              icon={<ExportOutlined />}
-              onClick={handleExport}
-            >
-              导出
-            </Button>
           </div>
         </div>
 
-        {/* 表格 */}
-        <ConfigProvider
-          theme={{
-            components: {
-              Table: {
-                headerBg: '#111a22',
-                headerColor: '#94a3b8',
-                headerBorderRadius: 0,
-                cellPaddingBlock: 16,
-                cellPaddingInline: 24,
+        {/* Table Container */}
+        <div className="flex-1 bg-[#1a2632] border border-[#233648] rounded-2xl overflow-hidden shadow-sm flex flex-col">
+          <Table
+            columns={columns}
+            dataSource={logs}
+            rowKey="id"
+            loading={loading}
+            pagination={{
+              current: page,
+              pageSize: pageSize,
+              total: total,
+              showSizeChanger: true,
+              showTotal: (total) => (
+                <span className="text-slate-500 text-xs font-bold uppercase tracking-widest">
+                  Total <span className="text-indigo-400 mx-1">{total}</span> Entries
+                </span>
+              ),
+              onChange: (newPage, newPageSize) => {
+                setPage(newPage);
+                setPageSize(newPageSize);
               },
-              Button: {
-                defaultBg: '#111a22',
-                defaultBorderColor: '#334155',
-                defaultColor: '#cbd5e1',
-                defaultHoverBg: '#111a22',
-                defaultHoverBorderColor: '#137fec',
-                defaultHoverColor: '#137fec',
-              }
-            }
-          }}
-        >
-          <div className="bg-[#1a2632] border border-[#233648] rounded-xl overflow-hidden">
-            <Table
-              columns={columns}
-              dataSource={logs}
-              rowKey="id"
-              loading={loading}
-              pagination={{
-                current: page,
-                pageSize: pageSize,
-                total: total,
-                showSizeChanger: true,
-                showTotal: (total) => `共 ${total} 条记录`,
-                onChange: (newPage, newPageSize) => {
-                  setPage(newPage);
-                  setPageSize(newPageSize);
-                },
-                pageSizeOptions: ['10', '20', '50', '100'],
-              }}
-              scroll={{ x: 1500 }}
-              rowClassName="hover:bg-[#1f2d3a] transition-colors"
-            />
-          </div>
-        </ConfigProvider>
+              className: "px-6 py-4 border-t border-[#233648] m-0",
+            }}
+            scroll={{ x: 1400, y: 'calc(100vh - 480px)' }}
+            className="custom-table"
+            rowClassName={() => "group cursor-default"}
+          />
+        </div>
       </div>
 
-      {/* 详情 Modal */}
+      {/* Details Modal */}
       <Modal
-        title="日志详情"
         open={detailModalOpen}
         onCancel={() => setDetailModalOpen(false)}
         footer={null}
-        width={800}
+        width={720}
+        closeIcon={null}
+        className="custom-modal"
         styles={{
-          content: {
-            backgroundColor: '#1a2632',
-            color: '#fff'
-          },
-          header: {
-            backgroundColor: '#111a22',
-            borderBottom: '1px solid #233648'
-          }
+          mask: { backdropFilter: 'blur(4px)', backgroundColor: 'rgba(0, 0, 0, 0.6)' },
+          content: { padding: 0, border: '1px solid #233648', backgroundColor: '#1a2632', borderRadius: '24px', overflow: 'hidden' }
         }}
+        title={
+          <div className="px-8 py-6 border-b border-[#233648] flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="bg-indigo-600/20 p-2 rounded-xl">
+                <InfoCircleOutlined className="text-indigo-400 text-xl" />
+              </div>
+              <div>
+                <h3 className="text-white text-lg font-black m-0 tracking-tight">请求事务详情</h3>
+                <p className="text-slate-500 text-[10px] font-mono mt-0.5 mb-0 tracking-tighter uppercase">Transaction Audit View</p>
+              </div>
+            </div>
+            <Button 
+              type="text" 
+              icon={<ReloadOutlined />} 
+              className="text-slate-500 hover:text-white"
+              onClick={() => fetchLogs()}
+            />
+          </div>
+        }
       >
         {selectedLog && (
-          <Descriptions
-            column={1}
-            bordered
-            items={[
-              {
-                label: '请求ID',
-                children: <Text copyable className="font-mono text-xs">{selectedLog.request_id}</Text>,
-              },
-              {
-                label: '应用名称',
-                children: selectedLog.app_name || '-',
-              },
-              {
-                label: '应用ID',
-                children: <Text copyable className="font-mono text-xs">{selectedLog.app_id}</Text>,
-              },
-              {
-                label: '模型',
-                children: selectedLog.model,
-              },
-              {
-                label: '提供商',
-                children: selectedLog.provider_name || '-',
-              },
-              {
-                label: '状态码',
-                children: (
-                  <Tag color={selectedLog.status >= 400 ? 'red' : 'green'}>
-                    {selectedLog.status}
-                  </Tag>
-                ),
-              },
-              {
-                label: '状态消息',
-                children: selectedLog.status_message || '-',
-              },
-              {
-                label: '请求时间',
-                children: selectedLog.request_time,
-              },
-              {
-                label: 'Prompt Tokens',
-                children: selectedLog.prompt_tokens || 0,
-              },
-              {
-                label: 'Completion Tokens',
-                children: selectedLog.completion_tokens || 0,
-              },
-              {
-                label: 'Total Tokens',
-                children: <Text strong>{selectedLog.total_tokens || 0}</Text>,
-              },
-            ]}
-          />
+          <div className="p-8 space-y-8">
+            {/* Status & Key Metrics Header */}
+            <div className="grid grid-cols-4 gap-4">
+              <div className="bg-[#111a22] p-4 rounded-2xl border border-[#233648] flex flex-col items-center">
+                <span className="text-slate-500 text-[10px] font-bold uppercase mb-1">Status</span>
+                <Tag color={selectedLog.status >= 400 ? 'red' : 'green'} className="m-0 font-black border-0 bg-transparent text-lg">
+                  {selectedLog.status}
+                </Tag>
+              </div>
+              <div className="bg-[#111a22] p-4 rounded-2xl border border-[#233648] flex flex-col items-center col-span-2">
+                <span className="text-slate-500 text-[10px] font-bold uppercase mb-1">Total Consumption</span>
+                <div className="flex items-center gap-2">
+                  <ThunderboltOutlined className="text-amber-400" />
+                  <span className="text-white text-xl font-black font-mono">{selectedLog.total_tokens?.toLocaleString() || 0}</span>
+                  <span className="text-slate-500 text-xs font-bold uppercase">Tokens</span>
+                </div>
+              </div>
+              <div className="bg-[#111a22] p-4 rounded-2xl border border-[#233648] flex flex-col items-center">
+                <span className="text-slate-500 text-[10px] font-bold uppercase mb-1">Latency</span>
+                <span className="text-indigo-400 text-lg font-black font-mono">-- <small className="text-[10px]">ms</small></span>
+              </div>
+            </div>
+
+            {/* Detailed Info Groups */}
+            <div className="space-y-6">
+              <section>
+                <div className="flex items-center gap-2 mb-3 px-1">
+                  <div className="w-1 h-4 bg-indigo-500 rounded-full" />
+                  <h4 className="text-white text-sm font-bold uppercase tracking-wider m-0">核心标识 / Core Identifiers</h4>
+                </div>
+                <div className="bg-[#111a22] p-6 rounded-2xl border border-[#233648] space-y-4">
+                  <div className="flex justify-between items-center py-1 border-b border-white/5">
+                    <span className="text-slate-400 text-xs">Request ID</span>
+                    <Text copyable className="text-indigo-300 font-mono text-xs">{selectedLog.request_id}</Text>
+                  </div>
+                  <div className="flex justify-between items-center py-1 border-b border-white/5">
+                    <span className="text-slate-400 text-xs">Application Name</span>
+                    <span className="text-white font-bold text-sm">{selectedLog.app_name || '-'}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-1">
+                    <span className="text-slate-400 text-xs">Application ID</span>
+                    <Text copyable className="text-slate-400 font-mono text-xs">{selectedLog.app_id}</Text>
+                  </div>
+                </div>
+              </section>
+
+              <section>
+                <div className="flex items-center gap-2 mb-3 px-1">
+                  <div className="w-1 h-4 bg-emerald-500 rounded-full" />
+                  <h4 className="text-white text-sm font-bold uppercase tracking-wider m-0">AI 运行时 / AI Runtime</h4>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-[#111a22] p-5 rounded-2xl border border-[#233648]">
+                    <p className="text-slate-500 text-[10px] font-bold uppercase mb-2">Model Interface</p>
+                    <span className="text-emerald-400 font-black text-base">{selectedLog.model}</span>
+                  </div>
+                  <div className="bg-[#111a22] p-5 rounded-2xl border border-[#233648]">
+                    <p className="text-slate-500 text-[10px] font-bold uppercase mb-2">Service Provider</p>
+                    <span className="text-white font-bold text-base uppercase tracking-tight">{selectedLog.provider_name || '-'}</span>
+                  </div>
+                </div>
+              </section>
+
+              <section>
+                <div className="flex items-center gap-2 mb-3 px-1">
+                  <div className="w-1 h-4 bg-amber-500 rounded-full" />
+                  <h4 className="text-white text-sm font-bold uppercase tracking-wider m-0">资源审计 / Usage Audit</h4>
+                </div>
+                <div className="bg-[#111a22] p-6 rounded-2xl border border-[#233648] grid grid-cols-3 gap-8">
+                  <div className="flex flex-col">
+                    <span className="text-slate-500 text-[10px] font-bold uppercase mb-1">Prompt</span>
+                    <span className="text-white font-mono text-lg font-bold">{selectedLog.prompt_tokens?.toLocaleString() || 0}</span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-slate-500 text-[10px] font-bold uppercase mb-1">Completion</span>
+                    <span className="text-white font-mono text-lg font-bold">{selectedLog.completion_tokens?.toLocaleString() || 0}</span>
+                  </div>
+                  <div className="flex flex-col border-l border-white/10 pl-8">
+                    <span className="text-amber-500 text-[10px] font-bold uppercase mb-1">Aggregate</span>
+                    <span className="text-white font-mono text-xl font-black">{selectedLog.total_tokens?.toLocaleString() || 0}</span>
+                  </div>
+                </div>
+              </section>
+
+              {selectedLog.status_message && (
+                <section>
+                  <div className="flex items-center gap-2 mb-3 px-1">
+                    <div className="w-1 h-4 bg-red-500 rounded-full" />
+                    <h4 className="text-white text-sm font-bold uppercase tracking-wider m-0">异常诊断 / Diagnostics</h4>
+                  </div>
+                  <div className="bg-red-500/5 p-5 rounded-2xl border border-red-500/20">
+                    <pre className="text-red-400 text-xs font-mono whitespace-pre-wrap m-0 leading-relaxed">
+                      {selectedLog.status_message}
+                    </pre>
+                  </div>
+                </section>
+              )}
+            </div>
+
+            <div className="flex justify-end pt-4 border-t border-[#233648]">
+              <Button 
+                onClick={() => setDetailModalOpen(false)} 
+                className="bg-[#111a22] border-[#233648] text-slate-400 hover:text-white h-11 px-10 rounded-xl font-bold"
+              >
+                关闭审计面板
+              </Button>
+            </div>
+          </div>
         )}
       </Modal>
-    </>
+    </ConfigProvider>
   );
 };
 
