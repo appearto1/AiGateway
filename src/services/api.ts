@@ -193,6 +193,8 @@ export interface AppData {
     model_config: string;
     kb_config: string;
     mcp_config: string;
+    tenant_id?: string;
+    tenant_name?: string;
 }
 
 export const getApps = async (name?: string, status?: number | 'all') => {

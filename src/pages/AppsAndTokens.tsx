@@ -5,7 +5,6 @@ import {
   Button, 
   Table, 
   Typography, 
-  Space, 
   Tooltip,
   ConfigProvider,
   theme,
@@ -17,15 +16,14 @@ import {
   InputNumber,
   DatePicker,
   TreeSelect,
-  Radio
+  Radio,
+  Badge,
+  Tag,
+  Avatar
 } from 'antd';
 import { 
   SearchOutlined, 
   PlusOutlined, 
-  FilterOutlined, 
-  ExportOutlined, 
-  EditOutlined, 
-  KeyOutlined, 
   InfoCircleFilled,
   SyncOutlined,
   EyeOutlined,
@@ -34,9 +32,22 @@ import {
   CloudFilled,
   DeleteOutlined,
   BarChartOutlined,
-  ReadFilled,
-  InfoCircleOutlined
+  InfoCircleOutlined,
+  RocketOutlined,
+  SafetyCertificateOutlined,
+  ApiOutlined,
+  AreaChartOutlined,
+  CopyOutlined,
+  ClockCircleOutlined,
+  AppstoreOutlined,
+  TeamOutlined,
+  GlobalOutlined,
+  ThunderboltOutlined,
+  LockOutlined,
+  SettingOutlined,
+  EditOutlined
 } from '@ant-design/icons';
+import { AreaChart, Area, ResponsiveContainer } from 'recharts';
 import { 
   getApps, createApp, updateApp, rotateAppSecret, deleteApp, getModelProviders, getAppModelStats,
   getKBForApp, getMcpServers,
@@ -140,7 +151,6 @@ const AppsAndTokens: React.FC = () => {
             const libs = res.data.libraries || [];
             const skills = res.data.skills || [];
             
-            // 仅选知识库：知识库可选，技能仅展示不可选（选知识库即使用该库下全部技能，含后续新增）
             const tree = libs.map((lib: KnowledgeLibrary) => {
                 const libSkills = skills.filter((s: KnowledgeSkill) => s.libraryId === lib.id);
                 return {
@@ -165,7 +175,6 @@ const AppsAndTokens: React.FC = () => {
     }
   };
 
-  // 部门树转 TreeSelect 数据（含递归子节点）
   const buildOrgTreeSelect = (nodes: OrgData[]): { title: string; value: string; key: string; children?: any[] }[] => {
     return (nodes || []).map((n) => ({
       title: n.name,
@@ -276,7 +285,6 @@ const AppsAndTokens: React.FC = () => {
   const handleEdit = (app: AppData) => {
     setEditingApp(app);
     
-    // Parse configs
     let selectedModels: string[] = [];
     let selectedKbs: string[] = [];
     let selectedMcps: string[] = [];
@@ -333,10 +341,7 @@ const AppsAndTokens: React.FC = () => {
   const handleSave = async () => {
     try {
         const values = await form.validateFields();
-        
-        // If agent mode is disabled, clear KB config
         const finalKbs = isAgentEnabled ? (values.selected_kbs || []) : [];
-        
         const payload = {
             ...values,
             status: values.status ? 0 : 1,
@@ -364,14 +369,17 @@ const AppsAndTokens: React.FC = () => {
     }
   };
 
-  const handleRotateSecret = async () => {
-      if (!editingApp) return;
+  const handleRotateSecret = async (appId?: string) => {
+      const id = appId || editingApp?.id;
+      if (!id) return;
       try {
-          const res = await rotateAppSecret(editingApp.id);
+          const res = await rotateAppSecret(id);
           if (res.code === 200) {
               messageApi.success('密钥已轮换');
-              setEditingApp(prev => prev ? ({...prev, app_secret: res.data.app_secret}) : null);
-              form.setFieldValue('app_secret', res.data.app_secret);
+              if (editingApp && editingApp.id === id) {
+                setEditingApp(prev => prev ? ({...prev, app_secret: res.data.app_secret}) : null);
+                form.setFieldValue('app_secret', res.data.app_secret);
+              }
               fetchApps();
           } else {
               messageApi.error(res.msg || '轮换失败');
@@ -423,173 +431,9 @@ const AppsAndTokens: React.FC = () => {
     }
   };
 
-  const columns = [
-    {
-      title: '应用名称',
-      dataIndex: 'name',
-      key: 'name',
-      render: (_: any, record: AppData) => (
-        <div className="flex items-center gap-3 py-1">
-          <div className={`size-8 rounded flex items-center justify-center text-xs font-bold text-white shrink-0 ${record.avatar_bg || 'bg-blue-500'}`}>
-            {record.avatar_text || record.name.substring(0, 2)}
-          </div>
-          <div className="flex flex-col">
-            <Text className="text-white font-medium text-sm">{record.name}</Text>
-            <Text className="text-slate-500 text-[10px]">{record.updatedTime}</Text>
-          </div>
-        </div>
-      ),
-    },
-    {
-      title: 'APP ID',
-      dataIndex: 'id',
-      key: 'id',
-      render: (text: string) => (
-        <Tooltip title="点击复制 ID">
-            <Text 
-                className="bg-[#111a22] text-slate-400 px-2 py-1 rounded font-mono text-[11px] border border-[#233648] cursor-pointer hover:border-primary/50 transition-colors"
-                onClick={() => handleCopy(text, 'ID 已复制')}
-            >
-            {text}
-            </Text>
-        </Tooltip>
-      ),
-    },
-    {
-      title: '应用密钥',
-      dataIndex: 'app_secret',
-      key: 'app_secret',
-      render: (_: any, record: AppData) => {
-        const fullKey = `${record.id}_${record.app_secret}`;
-        return (
-          <div className="flex items-center gap-2">
-              <Text className="text-slate-500 font-mono text-[11px] bg-[#111a22] px-2 py-1 rounded border border-[#233648]">
-                  {record.app_secret ? `${fullKey.substring(0, 12)}...${fullKey.substring(fullKey.length - 4)}` : '未生成'}
-              </Text>
-              <Tooltip title="复制完整密钥 (Format: appid_AppSecret)">
-                  <Button 
-                      type="text" 
-                      icon={<ExportOutlined className="text-[10px]" />} 
-                      size="small" 
-                      className="text-slate-500 hover:text-primary"
-                      onClick={() => handleCopy(fullKey, '密钥已复制到剪贴板')}
-                  />
-              </Tooltip>
-          </div>
-        );
-      },
-    },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      key: 'status',
-      render: (status: number) => (
-        <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-[11px] font-medium ${
-          status === 0 
-          ? 'bg-green-500/10 border-green-500/20 text-green-400' 
-          : 'bg-slate-500/10 border-slate-500/20 text-slate-400'
-        }`}>
-          <span className={`size-1.5 rounded-full ${status === 0 ? 'bg-green-500' : 'bg-slate-500'}`}></span>
-          {status === 0 ? '活跃' : '已停用'}
-        </div>
-      ),
-    },
-    {
-      title: '服务模式',
-      dataIndex: 'kb_config',
-      key: 'mode',
-      render: (kbConfig: string) => {
-        let isAgent = false;
-        try {
-            const kbs = JSON.parse(kbConfig || '[]');
-            isAgent = kbs.length > 0;
-        } catch(e) {}
-        
-        return (
-            <div className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wider ${
-                isAgent 
-                ? 'bg-purple-500/10 border-purple-500/20 text-purple-400' 
-                : 'bg-blue-500/10 border-blue-500/20 text-blue-400'
-              }`}>
-                {isAgent ? <ThunderboltFilled className="text-[10px]" /> : <SyncOutlined className="text-[10px]" />}
-                {isAgent ? 'Agent' : 'Proxy'}
-            </div>
-        );
-      }
-    },
-    {
-      title: 'Token 限额',
-      dataIndex: 'token_limit',
-      key: 'token_limit',
-      render: (limit: number) => (
-        <Text className="text-slate-400 text-xs">
-            {limit > 0 ? limit.toLocaleString() : '无限制'}
-        </Text>
-      ),
-    },
-    {
-      title: '总 TOKEN 用量',
-      dataIndex: 'total_tokens',
-      key: 'total_tokens',
-      align: 'right' as const,
-      render: (text: number) => (
-        <Text className="text-slate-200 font-mono text-sm">{text?.toLocaleString() || 0}</Text>
-      ),
-    },
-    {
-      title: '操作',
-      key: 'actions',
-      align: 'right' as const,
-      render: (_: any, record: AppData) => (
-        <Space size="middle">
-          <Tooltip title="编辑">
-            <Button 
-                type="text" 
-                icon={<EditOutlined className="text-slate-400 hover:text-white" />} 
-                size="small" 
-                onClick={() => handleEdit(record)}
-            />
-          </Tooltip>
-          <Tooltip title="重置密钥">
-            <Popconfirm 
-                title="确定要重置密钥吗？旧密钥将立即失效。" 
-                onConfirm={() => {
-                    setEditingApp(record); // Temporarily set context
-                    rotateAppSecret(record.id).then(res => {
-                        if(res.code === 200) {
-                             messageApi.success('密钥已重置');
-                             fetchApps();
-                        } else {
-                             messageApi.error('重置失败');
-                        }
-                    });
-                }}
-            >
-                <Button type="text" icon={<KeyOutlined className="text-slate-400 hover:text-white" />} size="small" />
-            </Popconfirm>
-          </Tooltip>
-          <Tooltip title="查看统计">
-            <Button 
-                type="text" 
-                icon={<BarChartOutlined className="text-slate-400 hover:text-primary" />} 
-                size="small" 
-                onClick={() => handleViewStats(record.id, record.name)}
-            />
-          </Tooltip>
-           <Tooltip title="删除">
-            <Popconfirm title="确定要删除此应用吗？" onConfirm={() => handleDelete(record.id)}>
-                <Button type="text" icon={<DeleteOutlined className="text-slate-400 hover:text-red-400" />} size="small" />
-            </Popconfirm>
-          </Tooltip>
-        </Space>
-      ),
-    },
-  ];
-
   const handleViewStats = async (appId: string, appName: string) => {
     setCurrentAppId(appId);
     setCurrentAppName(appName);
-    // 重置为最近7天
     const defaultRange: [Dayjs, Dayjs] = [
       dayjs().subtract(6, 'day'),
       dayjs()
@@ -635,611 +479,702 @@ const AppsAndTokens: React.FC = () => {
     }
   };
 
-
   return (
-    <div className="space-y-6">
-      {contextHolder}
-      {/* Header Section */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-bold text-white tracking-tight">应用与 API Key 管理</h2>
-          <p className="text-slate-400 text-sm mt-1">
-            管理接入的第三方应用及其 API 密钥权限、模型配额与用量统计。
-          </p>
+    <ConfigProvider
+      theme={{
+        algorithm: theme.darkAlgorithm,
+        token: {
+          colorBgElevated: '#1a2632',
+          colorBorder: '#233648',
+          borderRadiusLG: 16,
+          borderRadius: 8,
+          fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
+          colorPrimary: '#2563eb',
+        },
+        components: {
+          Card: {
+            colorBgContainer: '#1a2632',
+          },
+          Button: {
+            borderRadius: 12,
+            controlHeight: 36,
+          },
+          Input: {
+            borderRadius: 10,
+            colorBgContainer: '#111a22',
+          },
+          Select: {
+            borderRadius: 10,
+            colorBgContainer: '#111a22',
+          }
+        }
+      }}
+    >
+      <div className="h-full flex flex-col space-y-6 p-2">
+        {contextHolder}
+        
+        {/* Top Header */}
+        <div className="flex justify-between items-end mb-2 px-1">
+          <div>
+            <div className="flex items-center gap-3 mb-1">
+              <div className="bg-indigo-600/20 p-2 rounded-xl border border-indigo-500/30">
+                <RocketOutlined className="text-indigo-400 text-xl" />
+              </div>
+              <h1 className="text-2xl font-black text-white tracking-tight">App <span className="text-indigo-500">Access</span> Hub</h1>
+            </div>
+            <p className="text-slate-400 text-sm font-medium ml-12">
+              Application & API Key <span className="text-slate-600 mx-1">/</span> 企业级访问控制中心
+            </p>
+          </div>
+          <div className="flex items-center gap-4 mb-1">
+            <div className="flex items-center bg-[#1a2632]/80 backdrop-blur-md px-4 py-2 rounded-2xl border border-[#233648] shadow-sm">
+              <SafetyCertificateOutlined className="text-emerald-500 mr-2" />
+              <span className="text-slate-300 text-xs font-bold tracking-wide uppercase">Secured</span>
+            </div>
+            <Button 
+              type="primary" 
+              icon={<PlusOutlined />} 
+              onClick={handleCreate} 
+              className="bg-indigo-600 hover:bg-indigo-500 border-0 rounded-xl h-10 px-6 font-bold shadow-lg shadow-indigo-600/20 transition-all"
+            >
+              新建应用
+            </Button>
+          </div>
         </div>
-        <Button 
-          type="primary" 
-          icon={<PlusOutlined />}
-          className="bg-primary hover:bg-blue-600 border-none h-10 px-6 font-bold shadow-lg shadow-blue-900/20"
-          onClick={handleCreate}
-        >
-          新建应用
-        </Button>
-      </div>
 
-      {/* Filter Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-3 flex-1 min-w-[300px]">
-          <Input 
-            prefix={<SearchOutlined className="text-slate-500" />}
-            placeholder="搜索应用名称或 App ID..."
-            className="max-w-md bg-[#1a2632] border-[#233648] text-white hover:border-primary focus:border-primary h-10"
-            value={searchName}
-            onChange={(e) => setSearchName(e.target.value)}
-          />
-          <Select
-            value={filterStatus}
-            onChange={setFilterStatus}
-            className="w-32 h-10"
-            options={[
-              { value: 'all', label: '所有状态' },
-              { value: 0, label: '活跃' },
-              { value: 1, label: '已停用' },
-            ]}
-          />
+        {/* Stats Row */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-2">
+          <div className="bg-[#1a2632] rounded-2xl p-5 border border-[#233648] hover:border-indigo-500/30 transition-colors shadow-sm relative overflow-hidden group">
+             <div className="absolute top-0 right-0 p-8 opacity-[0.03] group-hover:scale-110 transition-transform">
+                <AppstoreOutlined style={{ fontSize: 80 }} className="text-white" />
+             </div>
+             <div className="relative z-10 flex items-center justify-between">
+               <div>
+                 <div className="text-slate-500 text-[10px] font-bold uppercase tracking-widest mb-2">活跃应用数</div>
+                 <div className="flex items-baseline gap-2">
+                   <span className="text-4xl font-black text-white leading-none tracking-tight">{apps.filter(a => a.status === 0).length}</span>
+                   <span className="text-slate-500 text-xs font-medium font-mono">/ {apps.length}</span>
+                 </div>
+               </div>
+               <div className="bg-indigo-500/10 p-4 rounded-2xl border border-indigo-500/20 shadow-lg shadow-indigo-500/5">
+                  <ApiOutlined className="text-indigo-400 text-2xl" />
+               </div>
+             </div>
+          </div>
+
+          <div className="bg-[#1a2632] rounded-2xl p-5 border border-[#233648] hover:border-emerald-500/30 transition-colors shadow-sm relative overflow-hidden group">
+             <div className="absolute top-0 right-0 p-8 opacity-[0.03] group-hover:scale-110 transition-transform">
+                <ThunderboltOutlined style={{ fontSize: 80 }} className="text-white" />
+             </div>
+             <div className="relative z-10 flex items-center justify-between">
+               <div>
+                 <div className="text-slate-500 text-[10px] font-bold uppercase tracking-widest mb-2">今日总消耗 (Tokens)</div>
+                 <div className="flex items-baseline gap-2">
+                   <span className="text-4xl font-black text-white leading-none tracking-tight">
+                     {apps.reduce((acc, a) => acc + (a.today_tokens || 0), 0).toLocaleString()}
+                   </span>
+                   <div className="flex items-center text-emerald-400 text-[10px] font-bold bg-emerald-500/10 px-1.5 py-0.5 rounded-full border border-emerald-500/20">
+                     <ClockCircleOutlined className="mr-1" /> 24H
+                   </div>
+                 </div>
+               </div>
+               <div className="bg-emerald-500/10 p-4 rounded-2xl border border-emerald-500/20 shadow-lg shadow-emerald-500/5">
+                  <ThunderboltOutlined className="text-emerald-400 text-2xl" />
+               </div>
+             </div>
+          </div>
+
+          <div className="bg-[#1a2632] rounded-2xl p-5 border border-[#233648] hover:border-amber-500/30 transition-colors shadow-sm relative overflow-hidden group">
+             <div className="relative z-10">
+                <div className="text-slate-500 text-[10px] font-bold uppercase tracking-widest mb-2">历史累计消耗</div>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-3xl font-black text-white leading-none tracking-tight">
+                    {apps.reduce((acc, a) => acc + (a.total_tokens || 0), 0).toLocaleString()}
+                  </span>
+                  <span className="text-slate-400 text-xs font-bold uppercase tracking-widest">Tokens</span>
+                </div>
+             </div>
+             <div className="absolute bottom-0 left-0 right-0 h-12 opacity-30 group-hover:opacity-50 transition-opacity pointer-events-none">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={apps.map(a => ({ value: a.total_tokens }))}>
+                    <Area type="monotone" dataKey="value" stroke="#fbbf24" strokeWidth={2} fill="#fbbf24" fillOpacity={0.1} />
+                  </AreaChart>
+                </ResponsiveContainer>
+             </div>
+             <div className="absolute top-5 right-5 bg-amber-500/10 p-2.5 rounded-xl border border-amber-500/20">
+                <AreaChartOutlined className="text-amber-400 text-lg" />
+             </div>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Button icon={<FilterOutlined />} className="bg-[#1a2632] border-[#233648] text-slate-300 h-10 px-4" onClick={fetchApps}>刷新</Button>
+
+        {/* Filter Bar */}
+        <div className="flex flex-wrap items-center justify-between gap-4 px-1">
+          <div className="flex items-center gap-3 flex-1 min-w-[300px]">
+            <Input 
+              prefix={<SearchOutlined className="text-slate-500" />}
+              placeholder="搜索应用名称或 App ID..."
+              className="max-w-md bg-[#1a2632] border-[#233648] text-white hover:border-indigo-500/50 focus:border-indigo-500 h-10 rounded-xl"
+              value={searchName}
+              onChange={(e) => setSearchName(e.target.value)}
+              onPressEnter={() => fetchApps()}
+            />
+            <Button
+              type="primary"
+              icon={<SearchOutlined />}
+              onClick={() => fetchApps()}
+              className="bg-indigo-600 hover:bg-indigo-500 border-0 h-10 rounded-xl px-4"
+            >
+              搜索
+            </Button>
+            <Select
+              value={filterStatus}
+              onChange={(v) => { setFilterStatus(v); setTimeout(() => fetchApps(), 0); }}
+              className="w-36 h-10 custom-select"
+              popupClassName="custom-dropdown"
+              options={[
+                { value: 'all', label: '所有状态' },
+                { value: 0, label: '活跃应用' },
+                { value: 1, label: '已禁用' },
+              ]}
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <Tooltip title="刷新列表">
+              <Button 
+                icon={<SyncOutlined spin={loading} />} 
+                className="bg-[#1a2632] border-[#233648] text-slate-400 hover:text-white hover:border-indigo-500/50 h-10 w-10 flex items-center justify-center rounded-xl" 
+                onClick={fetchApps} 
+              />
+            </Tooltip>
+          </div>
         </div>
-      </div>
 
-      {/* Table Section */}
-      <div className="bg-[#1a2632] border border-[#233648] rounded-xl overflow-hidden">
-        <ConfigProvider
-          theme={{
-            algorithm: theme.darkAlgorithm,
-            components: {
-              Table: {
-                headerBg: 'transparent',
-                headerColor: '#94a3b8',
-                headerSplitColor: 'transparent',
-                colorBgContainer: 'transparent',
-                borderColor: '#233648',
-                rowHoverBg: 'rgba(255, 255, 255, 0.02)',
-              }
-            }
-          }}
-        >
-          <Table 
-            columns={columns} 
-            dataSource={apps} 
-            rowKey="id"
-            pagination={{
-                total: apps.length,
-                pageSize: 10,
-                showSizeChanger: false,
-                className: "custom-pagination px-6 py-4"
-            }}
-            loading={loading}
-            className="custom-table"
-          />
-        </ConfigProvider>
-      </div>
+        {/* App Card Grid */}
+        <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 min-h-0">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {apps.map(app => {
+                let isAgent = false;
+                try {
+                    const kbs = JSON.parse(app.kb_config || '[]');
+                    isAgent = kbs.length > 0;
+                } catch(e) {}
+                const fullKey = `${app.id}_${app.app_secret}`;
 
-      {/* Footer Note */}
-      <div className="flex items-center gap-2 text-slate-500 text-xs">
-        <InfoCircleOutlined className="text-primary" />
-        <Text className="text-slate-500">
-          如需轮换 API Key，请点击行尾的"重置密钥"按钮。旧密钥将在 24 小时后失效，请确保所有相关应用已更新。
-        </Text>
-      </div>
+                return (
+                  <div 
+                    key={app.id}
+                    className="p-5 rounded-2xl border transition-all bg-[#1a2632] border-[#233648] hover:border-indigo-500/40 hover:shadow-xl hover:shadow-indigo-900/10 group flex flex-col h-full relative"
+                  >
+                    <div className="flex justify-between items-start mb-4">
+                      <div className="flex items-center gap-3">
+                        <Avatar 
+                          shape="square" 
+                          size={44} 
+                          className={`${app.avatar_bg || 'bg-indigo-600'} rounded-xl shadow-lg shadow-black/20 flex items-center justify-center font-bold text-lg border border-white/10`}
+                        >
+                          {app.avatar_text || app.name.substring(0, 2).toUpperCase()}
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-0.5">
+                            <span className="text-white font-bold truncate text-base" title={app.name}>{app.name}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span className={`w-1.5 h-1.5 rounded-full ${app.status === 0 ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-slate-600'}`}></span>
+                            <span className={`text-[10px] font-bold uppercase tracking-wider ${app.status === 0 ? 'text-emerald-400' : 'text-slate-500'}`}>
+                              {app.status === 0 ? 'Active' : 'Disabled'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="opacity-0 group-hover:opacity-100 transition-all flex gap-1">
+                        <Tooltip title="配置">
+                          <Button 
+                            size="small" 
+                            type="text" 
+                            className="text-slate-500 hover:text-white hover:bg-white/5"
+                            onClick={() => handleEdit(app)}
+                            icon={<SettingOutlined className="text-base" />}
+                          />
+                        </Tooltip>
+                      </div>
+                    </div>
 
-      {/* Edit App Modal */}
-      <ConfigProvider
-        theme={{
-            algorithm: theme.darkAlgorithm,
-            token: {
-                colorBgElevated: '#1a2632',
-                colorBorder: '#233648',
-                borderRadiusLG: 12,
-            },
-            components: {
-                Modal: {
-                    headerBg: '#1a2632',
-                    contentBg: '#1a2632',
-                    titleColor: 'white',
-                    paddingContentHorizontal: 0,
-                },
-                Input: {
-                    colorBgContainer: '#111a22',
-                    colorBorder: '#233648',
-                    hoverBorderColor: '#137fec',
-                    activeBorderColor: '#137fec',
-                    paddingBlock: 10,
-                },
-                Checkbox: {
-                    colorPrimary: '#137fec',
-                    colorText: '#e2e8f0',
-                },
-                Select: {
-                    colorBgContainer: '#111a22',
-                    colorBorder: '#233648',
-                },
-                TreeSelect: {
-                    colorBgContainer: '#111a22',
-                    colorBorder: '#233648',
-                }
-            }
-        }}
-      >
+                    <div className="flex gap-2 mb-4">
+                      <Tag 
+                        className={`m-0 text-[10px] border-0 px-2 py-0.5 rounded-lg font-bold uppercase tracking-tighter ${
+                          isAgent ? 'bg-indigo-500/10 text-indigo-400' : 'bg-blue-500/10 text-blue-400'
+                        }`}
+                      >
+                        {isAgent ? <ThunderboltFilled className="mr-1" /> : <SyncOutlined className="mr-1" />}
+                        {isAgent ? 'Agent' : 'Proxy'}
+                      </Tag>
+                      {app.tenant_name && (
+                        <Tag className="m-0 text-[10px] border-0 bg-purple-500/10 text-purple-400 px-2 py-0.5 rounded-lg font-bold uppercase tracking-tighter">
+                          <TeamOutlined className="mr-1" /> {app.tenant_name}
+                        </Tag>
+                      )}
+                    </div>
+
+                    <div className="space-y-3 flex-1">
+                      <div>
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">App ID</span>
+                          <Tooltip title="点击复制 ID">
+                            <CopyOutlined 
+                              className="text-slate-600 hover:text-indigo-400 cursor-pointer text-[10px]" 
+                              onClick={() => handleCopy(app.id)}
+                            />
+                          </Tooltip>
+                        </div>
+                        <div className="bg-[#111a22] px-2 py-1.5 rounded-lg border border-[#233648] text-slate-400 font-mono text-[10px] truncate select-all">
+                          {app.id}
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">App Secret</span>
+                          <div className="flex gap-2">
+                             <Tooltip title="复制完整密钥">
+                                <CopyOutlined 
+                                  className="text-slate-600 hover:text-indigo-400 cursor-pointer text-[10px]" 
+                                  onClick={() => handleCopy(fullKey)}
+                                />
+                             </Tooltip>
+                             <Tooltip title="重置密钥">
+                                <Popconfirm title="确定要重置密钥吗？" onConfirm={() => handleRotateSecret(app.id)}>
+                                   <SyncOutlined className="text-slate-600 hover:text-amber-500 cursor-pointer text-[10px]" />
+                                </Popconfirm>
+                             </Tooltip>
+                          </div>
+                        </div>
+                        <div className="bg-[#111a22] px-2 py-1.5 rounded-lg border border-[#233648] text-slate-500 font-mono text-[10px] truncate">
+                          {app.app_secret ? `${fullKey.substring(0, 10)}****************` : '未配置'}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 pt-4 border-t border-white/5">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <div className="text-[9px] text-slate-500 font-bold uppercase tracking-tighter mb-1">今日 Tokens</div>
+                          <div className="text-emerald-400 font-mono font-bold text-sm">
+                            {(Number(app.today_tokens) || 0).toLocaleString()}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-[9px] text-slate-500 font-bold uppercase tracking-tighter mb-1">配额用量</div>
+                          <div className="text-slate-300 font-mono font-bold text-sm">
+                            {(() => {
+                              const limit = Number(app.token_limit) || 0;
+                              const used = Number(app.total_tokens) || 0;
+                              if (limit <= 0) return '无限制';
+                              const pct = Math.min(100, Math.round((used / limit) * 100));
+                              return used > limit
+                                ? `${used.toLocaleString()} / ${limit.toLocaleString()} (已超)`
+                                : `${used.toLocaleString()} / ${limit.toLocaleString()} (${pct}%)`;
+                            })()}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 flex gap-2">
+                      <Button 
+                        block 
+                        size="small" 
+                        icon={<BarChartOutlined />}
+                        className="bg-[#1a2632] border-[#233648] text-slate-400 hover:text-white hover:border-indigo-500/50 rounded-lg text-xs"
+                        onClick={() => handleViewStats(app.id, app.name)}
+                      >
+                        统计
+                      </Button>
+                      <Popconfirm title="确定要删除此应用吗？" onConfirm={() => handleDelete(app.id)}>
+                        <Button 
+                          danger
+                          size="small" 
+                          icon={<DeleteOutlined />}
+                          className="bg-red-500/10 border-red-500/20 text-red-400 hover:bg-red-500 hover:text-white rounded-lg w-10 flex items-center justify-center"
+                        />
+                      </Popconfirm>
+                    </div>
+                  </div>
+                );
+            })}
+          </div>
+        </div>
+
+        {/* Edit App Modal */}
         <Modal
             open={isModalOpen}
             onCancel={handleModalClose}
             footer={null}
             width={720}
-            className="app-edit-modal"
-            closeIcon={<CustomCloseOutlined className="text-slate-400 hover:text-white" />}
+            className="custom-modal"
             styles={{
                 mask: { backdropFilter: 'blur(4px)', backgroundColor: 'rgba(0, 0, 0, 0.6)' },
-                body: { padding: 0, border: '1px solid #233648' }
-            }}
+                content: { padding: 0, border: '1px solid #233648', backgroundColor: '#1a2632', borderRadius: '20px' }
+            } as any}
             title={
-                <div className="px-6 py-5 border-b border-[#233648] flex items-center gap-3">
-                    <EditOutlined className="text-primary text-xl" />
+                <div className="px-8 py-5 border-b border-[#233648] flex items-center gap-3">
+                    <div className="bg-indigo-600/20 p-2 rounded-lg">
+                        <EditOutlined className="text-indigo-400 text-xl" />
+                    </div>
                     <div>
-                        <h3 className="text-white text-lg font-bold m-0">{editingApp ? '编辑应用详情' : '创建新应用'}</h3>
-                        <p className="text-slate-500 text-xs font-mono mt-0.5 mb-0">App ID: {editingApp?.id || '系统自动生成'}</p>
+                        <h3 className="text-white text-lg font-bold m-0">{editingApp ? '应用配置详情' : '创建企业级应用'}</h3>
+                        <p className="text-slate-500 text-xs font-mono mt-0.5 mb-0">UID: {editingApp?.id || 'AUTO_GENERATED'}</p>
                     </div>
                 </div>
             }
         >
-            <div className="p-6 space-y-6 max-h-[80vh] overflow-y-auto custom-scrollbar">
-                <Form layout="vertical" className="space-y-6" form={form}>
-                    {/* Section: Basic Info */}
-                    <div className="bg-[#111a22]/50 border border-[#233648] rounded-xl p-6 space-y-4">
-                        <div className="flex items-center gap-2 mb-2">
-                            <InfoCircleFilled className="text-primary" />
-                            <span className="text-white font-bold">基础信息</span>
+            <div className="p-8 space-y-6 max-h-[75vh] overflow-y-auto custom-scrollbar">
+                <Form layout="vertical" form={form} className="space-y-6">
+                    {/* Basic Info */}
+                    <div className="space-y-4">
+                        <div className="flex items-center gap-2 mb-2 text-indigo-400 text-xs font-black uppercase tracking-widest">
+                            <InfoCircleFilled /> 基础身份信息
                         </div>
-                        
-                        <Form.Item name="name" label={<span className="text-slate-400 text-xs font-bold uppercase tracking-wider">应用名称</span>} className="mb-0" rules={[{ required: true, message: '请输入应用名称' }]}>
-                            <Input 
-                                placeholder="输入应用名称"
-                                className="text-white"
-                            />
-                        </Form.Item>
-                        
-                        <Form.Item name="description" label={<span className="text-slate-400 text-xs font-bold uppercase tracking-wider">应用描述</span>} className="mb-0">
-                            <TextArea 
-                                rows={3}
-                                placeholder="简要描述应用用途..."
-                                className="text-white"
-                            />
-                        </Form.Item>
-
-                        <Form.Item name="status" label={<span className="text-slate-400 text-xs font-bold uppercase tracking-wider">应用状态</span>} className="mb-0" valuePropName="checked">
-                            <Switch 
-                                checkedChildren="活跃" 
-                                unCheckedChildren="已停用"
-                                className="bg-slate-600"
-                            />
+                        <div className="grid grid-cols-2 gap-4">
+                            <Form.Item name="name" label={<span className="text-slate-400 text-xs font-bold uppercase">应用显示名称</span>} rules={[{ required: true }]}>
+                                <Input placeholder="例如: 智能客服助手" className="bg-[#111a22] border-[#233648] text-white h-11" />
+                            </Form.Item>
+                            <Form.Item name="status" label={<span className="text-slate-400 text-xs font-bold uppercase">运行状态</span>} valuePropName="checked">
+                                <Switch checkedChildren="活跃" unCheckedChildren="停用" className="bg-slate-600 mt-2" />
+                            </Form.Item>
+                        </div>
+                        <Form.Item name="description" label={<span className="text-slate-400 text-xs font-bold uppercase">功能描述</span>}>
+                            <TextArea rows={3} placeholder="简要描述该应用的使用场景与业务价值..." className="bg-[#111a22] border-[#233648] text-white" />
                         </Form.Item>
                     </div>
 
-                    {/* Section: API Key Management */}
+                    {/* API Key Management */}
                     {editingApp && (
-                    <div className="bg-[#111a22]/50 border border-[#233648] rounded-xl p-6 space-y-4">
-                        <div className="flex items-center gap-2 mb-2">
-                            <KeyOutlined className="text-primary" />
-                            <span className="text-white font-bold">API Key 管理</span>
-                        </div>
-
-                        <Form.Item label={<span className="text-slate-400 text-xs font-bold uppercase tracking-wider">应用密钥 (App Secret)</span>} className="mb-0">
-                            <div className="flex gap-3">
-                                <Form.Item noStyle>
-                                    <Input.Password 
-                                        readOnly
-                                        value={editingApp ? `${editingApp.id}_${editingApp.app_secret}` : ''}
-                                        placeholder="appid_secret"
-                                        className="text-white font-mono flex-1"
-                                        iconRender={(visible) => (visible ? <EyeOutlined /> : <EyeInvisibleOutlined />)}
-                                    />
-                                </Form.Item>
-                                <Button icon={<SyncOutlined />} onClick={handleRotateSecret} className="bg-[#111a22] border-[#233648] text-slate-300 hover:text-white h-[42px] px-4">
+                        <div className="bg-[#111a22] p-6 rounded-2xl border border-[#233648] space-y-4">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2 text-amber-400 text-xs font-black uppercase tracking-widest">
+                                    <LockOutlined /> 访问凭证安全
+                                </div>
+                                <Button size="small" icon={<SyncOutlined />} onClick={() => handleRotateSecret()} className="bg-amber-500/10 border-amber-500/20 text-amber-500 text-xs hover:bg-amber-500 hover:text-white">
                                     轮换密钥
                                 </Button>
                             </div>
-                        </Form.Item>
-                    </div>
-                    )}
-
-                    {/* Section: 授权对象（个人/部门/租户） */}
-                    {editingApp && (
-                    <div className="bg-[#111a22]/50 border border-[#233648] rounded-xl p-6 space-y-4">
-                        <div className="flex items-center gap-2 mb-2">
-                            <InfoCircleFilled className="text-primary" />
-                            <span className="text-white font-bold">授权对象</span>
-                        </div>
-                        <p className="text-slate-500 text-[10px] mb-2">
-                            不配置表示所有人可用；配置后仅列表中的个人/部门/租户可用。部门含子部门，租户含该租户下全部部门。
-                        </p>
-                        {authLoading ? (
-                            <div className="text-slate-500 text-sm py-2">加载中...</div>
-                        ) : authList.length > 0 ? (
-                            <div className="space-y-2 mb-4">
-                                {authList.map((a) => (
-                                    <div key={a.id} className="flex items-center justify-between py-2 px-3 rounded-lg bg-[#1a2632] border border-[#233648]">
-                                        <span className="text-slate-300 text-sm">
-                                            <span className="text-slate-500 text-xs mr-2">{authTypeLabel[a.target_type]}</span>
-                                            {a.target_name}
-                                        </span>
-                                        <Popconfirm title="确定移除该授权？" onConfirm={() => handleRemoveAuth(a.id)}>
-                                            <Button type="text" size="small" danger icon={<DeleteOutlined />} className="text-slate-400 hover:text-red-400" />
-                                        </Popconfirm>
-                                    </div>
-                                ))}
+                            <div>
+                                <div className="text-slate-500 text-[10px] mb-2 uppercase font-bold">App Secret (appid_secret)</div>
+                                <Input.Password 
+                                    readOnly
+                                    value={`${editingApp.id}_${editingApp.app_secret}`}
+                                    className="bg-black/20 border-[#233648] text-indigo-400 font-mono h-11"
+                                    iconRender={(visible) => (visible ? <EyeOutlined /> : <EyeInvisibleOutlined />)}
+                                />
                             </div>
-                        ) : (
-                            <div className="text-slate-500 text-sm py-2 mb-2">暂无授权，所有人可用。</div>
-                        )}
-                        <div className="flex flex-wrap items-end gap-2 pt-2 border-t border-[#233648]">
-                            <Select
-                                value={addAuthType}
-                                onChange={(v) => { setAddAuthType(v); setAddAuthValue(null); }}
-                                options={[
-                                    { value: 'tenant', label: '租户（全部部门）' },
-                                    { value: 'department', label: '部门（含子部门）' },
-                                    { value: 'user', label: '个人' },
-                                ]}
-                                className="w-[160px]"
-                            />
-                            {addAuthType === 'tenant' && (
-                                <Select
-                                    placeholder="选择租户（顶级部门）"
-                                    value={addAuthValue}
-                                    onChange={setAddAuthValue}
-                                    allowClear
-                                    className="min-w-[200px]"
-                                    options={orgTreeData.map((n) => ({ value: n.value, label: n.title }))}
-                                />
-                            )}
-                            {addAuthType === 'department' && (
-                                <TreeSelect
-                                    placeholder="选择部门"
-                                    value={addAuthValue}
-                                    onChange={setAddAuthValue}
-                                    treeData={orgTreeData}
-                                    treeDefaultExpandAll
-                                    allowClear
-                                    className="min-w-[200px]"
-                                    dropdownStyle={{ maxHeight: 280, backgroundColor: '#1a2632' }}
-                                    fieldNames={{ label: 'title', value: 'value' }}
-                                />
-                            )}
-                            {addAuthType === 'user' && (
-                                <Select
-                                    placeholder="选择用户"
-                                    value={addAuthValue}
-                                    onChange={setAddAuthValue}
-                                    allowClear
-                                    showSearch
-                                    optionFilterProp="label"
-                                    loading={userListLoading}
-                                    className="min-w-[200px]"
-                                    options={userList.map((u) => ({ value: u.id, label: `${u.nickname || u.username} (${u.username})` }))}
-                                />
-                            )}
-                            <Button type="primary" size="middle" onClick={handleAddAuth} className="bg-primary border-none">
-                                添加
-                            </Button>
                         </div>
-                    </div>
                     )}
 
-                    {/* Section: Service Mode Selection (Progressive Disclosure) */}
-                    <div className="bg-[#111a22]/50 border border-[#233648] rounded-xl p-6 space-y-4">
+                    {/* Authorization */}
+                    {editingApp && (
+                        <div className="space-y-4">
+                            <div className="flex items-center gap-2 mb-2 text-purple-400 text-xs font-black uppercase tracking-widest">
+                                <TeamOutlined /> 访问控制 (ACL)
+                            </div>
+                            <div className="bg-[#111a22] p-5 rounded-2xl border border-[#233648]">
+                                {authLoading ? (
+                                    <div className="text-slate-500 text-xs py-4 flex items-center gap-2 justify-center"><SyncOutlined spin /> 同步授权列表中...</div>
+                                ) : authList.length > 0 ? (
+                                    <div className="flex flex-wrap gap-2 mb-4">
+                                        {authList.map((a) => (
+                                            <Tag key={a.id} closable onClose={() => handleRemoveAuth(a.id)} className="bg-[#1a2632] border-[#233648] text-slate-300 py-1 px-3 rounded-lg flex items-center gap-2">
+                                                <span className="text-[10px] text-indigo-500 font-bold uppercase">{authTypeLabel[a.target_type]}</span>
+                                                {a.target_name}
+                                            </Tag>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="text-slate-500 text-xs py-4 text-center bg-black/10 rounded-xl mb-4 italic">未设置授权，此应用默认为全组织公开。</div>
+                                )}
+                                <div className="flex gap-2">
+                                    <Select
+                                        value={addAuthType}
+                                        onChange={(v) => { setAddAuthType(v); setAddAuthValue(null); }}
+                                        options={[
+                                            { value: 'tenant', label: '所属租户' },
+                                            { value: 'department', label: '特定部门' },
+                                            { value: 'user', label: '具体人员' },
+                                        ]}
+                                        className="w-1/3 h-10"
+                                    />
+                                    <div className="flex-1 flex gap-2">
+                                        {addAuthType === 'tenant' && (
+                                            <Select
+                                                placeholder="选择租户"
+                                                value={addAuthValue}
+                                                onChange={setAddAuthValue}
+                                                className="flex-1 h-10"
+                                                options={orgTreeData.map((n) => ({ value: n.value, label: n.title }))}
+                                            />
+                                        )}
+                                        {addAuthType === 'department' && (
+                                            <TreeSelect
+                                                placeholder="选择授权部门"
+                                                value={addAuthValue}
+                                                onChange={setAddAuthValue}
+                                                treeData={orgTreeData}
+                                                className="flex-1 h-10"
+                                                dropdownStyle={{ backgroundColor: '#1a2632' }}
+                                            />
+                                        )}
+                                        {addAuthType === 'user' && (
+                                            <Select
+                                                showSearch
+                                                placeholder="搜索用户姓名"
+                                                value={addAuthValue}
+                                                onChange={setAddAuthValue}
+                                                loading={userListLoading}
+                                                className="flex-1 h-10"
+                                                options={userList.map((u) => ({ value: u.id, label: `${u.nickname || u.username}` }))}
+                                            />
+                                        )}
+                                        <Button type="primary" onClick={handleAddAuth} className="bg-indigo-600 h-10">授权</Button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Mode Selection */}
+                    <div className="space-y-4">
                         <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                                <ThunderboltFilled className="text-primary" />
-                                <span className="text-white font-bold">服务模式配置</span>
+                            <div className="flex items-center gap-2 text-blue-400 text-xs font-black uppercase tracking-widest">
+                                <GlobalOutlined /> 服务交付模式
                             </div>
                             <Radio.Group 
                                 value={isAgentEnabled ? 'agent' : 'proxy'} 
                                 onChange={(e) => setIsAgentEnabled(e.target.value === 'agent')}
-                                buttonStyle="solid"
-                                size="small"
                                 className="custom-radio-group"
                             >
-                                <Radio.Button value="proxy">标准 Proxy</Radio.Button>
-                                <Radio.Button value="agent">Agent 技能模式</Radio.Button>
+                                <Radio.Button value="proxy">Proxy 转发</Radio.Button>
+                                <Radio.Button value="agent">Agent 技能</Radio.Button>
                             </Radio.Group>
                         </div>
-                        <p className="text-slate-500 text-[11px] mb-0">
-                            {isAgentEnabled 
-                                ? "Agent 模式允许模型调用知识库技能，支持多轮对话自动触发工具执行。" 
-                                : "标准 Proxy 模式仅作为 API 转发，直接透明传递模型原始能力。"}
-                        </p>
-                    </div>
-
-                    {/* Section: Knowledge Base Configuration (Only show if Agent mode enabled) */}
-                    {isAgentEnabled && (
-                    <div className="bg-[#111a22]/50 border border-[#233648] rounded-xl p-6 space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
-                        <div className="flex items-center gap-2 mb-2">
-                            <ReadFilled className="text-primary" />
-                            <span className="text-white font-bold">知识库配置</span>
-                        </div>
                         
-                        <Form.Item name="selected_kbs" label={<span className="text-slate-400 text-xs font-bold uppercase tracking-wider">选择知识库</span>} className="mb-0">
-                            <TreeSelect
-                                treeData={kbTreeData}
-                                treeCheckable={true}
-                                showCheckedStrategy={TreeSelect.SHOW_PARENT}
-                                placeholder="选择知识库即可，将使用该知识库下全部技能（含后续新增）"
-                                className="w-full"
-                                dropdownStyle={{ maxHeight: 400, overflow: 'auto', backgroundColor: '#1a2632' }}
-                                maxTagCount="responsive"
-                                allowClear
-                            />
-                        </Form.Item>
-                         <p className="text-slate-500 text-[10px] mt-2 italic">
-                            * 只需选择知识库，该知识库下现有及后续新增的技能均可使用；技能节点仅作展示不可勾选。
-                        </p>
-                    </div>
-                    )}
-
-                    {/* Section: Quota & Rate Limits */}
-                    <div className="bg-[#111a22]/50 border border-[#233648] rounded-xl p-6 space-y-5">
-                        <div className="flex items-center gap-2 mb-2">
-                            <ThunderboltFilled className="text-primary" />
-                            <span className="text-white font-bold">额度与频率限制</span>
-                        </div>
-
-                        <div className="grid grid-cols-3 gap-4">
-                            <Form.Item name="token_limit" label={<span className="text-slate-400 text-xs font-medium">总 Token 额度</span>} className="mb-0">
-                                <InputNumber 
-                                    className="w-full text-white font-mono"
-                                    placeholder="0表示无限制"
-                                />
-                            </Form.Item>
-                            <Form.Item name="daily_token_limit" label={<span className="text-slate-400 text-xs font-medium">每日限额</span>} className="mb-0">
-                                <InputNumber 
-                                    className="w-full text-white font-mono"
-                                    placeholder="0表示无限制"
-                                />
-                            </Form.Item>
-                            <Form.Item name="qps_limit" label={<span className="text-slate-400 text-xs font-medium">QPS 限制</span>} className="mb-0">
-                                <InputNumber 
-                                    className="w-full text-white font-mono"
-                                    placeholder="0表示无限制"
-                                />
-                            </Form.Item>
-                        </div>
+                        {isAgentEnabled ? (
+                            <div className="bg-indigo-600/5 p-5 rounded-2xl border border-indigo-500/20 space-y-4 animate-in fade-in zoom-in-95 duration-300">
+                                <Form.Item name="selected_kbs" label={<span className="text-slate-400 text-xs font-bold uppercase">绑定知识库技能</span>} className="mb-0">
+                                    <TreeSelect
+                                        treeData={kbTreeData}
+                                        treeCheckable={true}
+                                        showCheckedStrategy={TreeSelect.SHOW_PARENT}
+                                        placeholder="选择该应用可调用的 Agent 技能知识库..."
+                                        className="w-full"
+                                        dropdownStyle={{ backgroundColor: '#1a2632' }}
+                                    />
+                                </Form.Item>
+                                <div className="text-[10px] text-slate-500 italic"><InfoCircleOutlined className="mr-1" /> 勾选后，模型可以通过函数调用（Function Calling）自主检索这些库中的知识内容。</div>
+                            </div>
+                        ) : (
+                            <div className="bg-blue-600/5 p-4 rounded-2xl border border-blue-500/10 text-xs text-slate-400">
+                                当前处于标准代理模式：模型请求将直接透明转发至后端厂商，不携带任何额外的 Agent 插件或知识库能力。
+                            </div>
+                        )}
                     </div>
 
-                    {/* Section: Model Access */}
-                    <div className="bg-[#111a22]/50 border border-[#233648] rounded-xl p-6 space-y-4">
-                        <div className="flex items-center gap-2 mb-2">
-                            <CloudFilled className="text-primary" />
-                            <span className="text-white font-bold">模型权限配置</span>
+                    {/* Quota & Models */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-4">
+                            <div className="flex items-center gap-2 text-emerald-400 text-xs font-black uppercase tracking-widest">
+                                <ThunderboltOutlined /> 配额与限流设置
+                            </div>
+                            <div className="bg-[#111a22] p-5 rounded-2xl border border-[#233648] space-y-4">
+                                <Form.Item name="token_limit" label={<span className="text-slate-500 text-[10px] font-bold uppercase">总额度上限 (Tokens)</span>} className="mb-0">
+                                    <InputNumber className="w-full h-10 bg-black/20" placeholder="0 表示无限制" />
+                                </Form.Item>
+                                <Form.Item name="daily_token_limit" label={<span className="text-slate-500 text-[10px] font-bold uppercase">单日消耗阈值</span>} className="mb-0">
+                                    <InputNumber className="w-full h-10 bg-black/20" placeholder="0 表示无限制" />
+                                </Form.Item>
+                                <Form.Item name="qps_limit" label={<span className="text-slate-500 text-[10px] font-bold uppercase">并发 QPS 限制</span>} className="mb-0">
+                                    <InputNumber className="w-full h-10 bg-black/20" placeholder="0 表示无限制" />
+                                </Form.Item>
+                            </div>
                         </div>
-                        
-                        <Form.Item name="selected_models" label={<span className="text-slate-400 text-xs font-bold uppercase tracking-wider">选择允许访问的模型</span>} className="mb-0">
+
+                        <div className="space-y-4">
+                            <div className="flex items-center gap-2 text-blue-400 text-xs font-black uppercase tracking-widest">
+                                <CloudFilled /> 模型访问策略
+                            </div>
+                            <div className="bg-[#111a22] p-5 rounded-2xl border border-[#233648] flex flex-col h-full">
+                                <Form.Item name="selected_models" label={<span className="text-slate-500 text-[10px] font-bold uppercase">允许调用的白名单模型</span>} className="flex-1 mb-0">
+                                    <Select
+                                        mode="multiple"
+                                        placeholder="请选择此应用有权访问的模型..."
+                                        className="w-full min-h-[140px]"
+                                        options={allAvailableModels}
+                                        dropdownStyle={{ backgroundColor: '#1a2632' }}
+                                    />
+                                </Form.Item>
+                                <div className="text-[9px] text-slate-600 mt-2 uppercase tracking-tighter">* 仅显示当前已激活的服务提供商模型</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* MCP Configuration */}
+                    <div className="space-y-4">
+                        <div className="flex items-center gap-2 text-amber-400 text-xs font-black uppercase tracking-widest">
+                            <ApiOutlined /> MCP 扩展工具集
+                        </div>
+                        <Form.Item name="selected_mcps" className="mb-0">
                             <Select
                                 mode="multiple"
-                                placeholder="选择允许此应用访问的模型..."
-                                className="w-full"
-                                options={allAvailableModels}
-                                maxTagCount="responsive"
-                                dropdownStyle={{ backgroundColor: '#1a2632' }}
-                            />
-                        </Form.Item>
-                        <p className="text-slate-500 text-[10px] mt-2 italic">
-                            * 仅显示目前已启用的模型厂商所支持的模型。
-                        </p>
-                    </div>
-
-                    {/* Section: MCP Services */}
-                    <div className="bg-[#111a22]/50 border border-[#233648] rounded-xl p-6 space-y-4">
-                        <div className="flex items-center gap-2 mb-2">
-                            <ThunderboltFilled className="text-primary" />
-                            <span className="text-white font-bold">MCP 工具服务</span>
-                        </div>
-                        
-                        <Form.Item name="selected_mcps" label={<span className="text-slate-400 text-xs font-bold uppercase tracking-wider">选择 MCP 服务</span>} className="mb-0">
-                            <Select
-                                mode="multiple"
-                                placeholder="选择允许此应用使用的 MCP 服务..."
+                                placeholder="选择该应用可接入的 MCP 协议工具..."
                                 className="w-full"
                                 options={mcpServers.map(s => ({
                                     label: `${s.name} (${s.type})`,
                                     value: s.id
                                 }))}
-                                maxTagCount="responsive"
                                 dropdownStyle={{ backgroundColor: '#1a2632' }}
                             />
                         </Form.Item>
-                        <p className="text-slate-500 text-[10px] mt-2 italic">
-                            * 选择的 MCP 服务将在模型测试时可用，模型可以调用这些服务提供的工具。
-                        </p>
                     </div>
                 </Form>
 
-                <div className="flex justify-end gap-3 pt-4 border-t border-[#233648] mt-6">
-                    <Button 
-                        onClick={handleModalClose}
-                        className="bg-transparent border-[#334155] text-slate-300 hover:text-white hover:border-slate-400 h-10 px-6 rounded-lg"
-                    >
-                        取消
-                    </Button>
-                    <Button 
-                        type="primary" 
-                        onClick={handleSave}
-                        className="bg-primary hover:bg-blue-600 border-none h-10 px-8 font-bold rounded-lg shadow-lg shadow-blue-900/20"
-                    >
-                        保存更改
+                <div className="flex justify-end gap-3 pt-6 border-t border-[#233648] mt-4">
+                    <Button onClick={handleModalClose} className="bg-transparent border-[#334155] text-slate-400 hover:text-white h-11 px-8 rounded-xl">取消</Button>
+                    <Button type="primary" onClick={handleSave} className="bg-indigo-600 h-11 px-10 font-bold rounded-xl shadow-lg shadow-indigo-600/20">
+                        {editingApp ? '提交并保存' : '立即部署应用'}
                     </Button>
                 </div>
             </div>
         </Modal>
-      </ConfigProvider>
 
-      {/* Stats Modal */}
-      <ConfigProvider
-          theme={{
-            algorithm: theme.darkAlgorithm,
-            token: {
-              colorBgElevated: '#1a2632',
-              colorBorder: '#233648',
-              borderRadiusLG: 12,
-            },
-            components: {
-              Modal: {
-                headerBg: '#1a2632',
-                contentBg: '#1a2632',
-                titleColor: 'white',
-                paddingContentHorizontal: 0,
-              },
-              DatePicker: {
-                colorBgContainer: '#111a22',
-                colorBorder: '#233648',
-                hoverBorderColor: '#137fec',
-                activeBorderColor: '#137fec',
-                colorText: '#e2e8f0',
-                colorTextPlaceholder: '#64748b',
-              },
-            },
-          }}
-        >
-          <Modal
+        {/* Stats Modal */}
+        <Modal
             title={
-              <div className="flex items-center gap-2">
-                <BarChartOutlined className="text-primary" />
-                <span>应用使用统计 - {currentAppName}</span>
-              </div>
+                <div className="flex items-center gap-3 px-2">
+                    <div className="bg-primary/20 p-2 rounded-lg"><BarChartOutlined className="text-primary text-xl" /></div>
+                    <div>
+                        <div className="text-white font-bold text-lg leading-none">使用统计报表</div>
+                        <div className="text-slate-500 text-xs font-mono mt-1">{currentAppName}</div>
+                    </div>
+                </div>
             }
             open={statsModalOpen}
             onCancel={() => setStatsModalOpen(false)}
             footer={null}
-            width={900}
-            className="stats-modal"
-          >
-            <div className="space-y-4">
-              <div className="flex items-center justify-between mb-4">
-                <div className="text-slate-400 text-sm">
-                  统计该应用使用的模型及其 Token 使用情况
+            width={960}
+            className="custom-modal"
+            styles={{
+                mask: { backdropFilter: 'blur(4px)', backgroundColor: 'rgba(0, 0, 0, 0.6)' },
+                content: { padding: '24px', border: '1px solid #233648', backgroundColor: '#1a2632', borderRadius: '24px' }
+            } as any}
+        >
+            <div className="space-y-6">
+                <div className="flex items-center justify-between bg-[#111a22] p-4 rounded-2xl border border-[#233648]">
+                    <div className="text-slate-400 text-sm font-medium flex items-center gap-2">
+                        <InfoCircleOutlined className="text-indigo-500" />
+                        分析该应用在选定周期内的模型粒度 Token 消耗及质量趋势
+                    </div>
+                    <DatePicker.RangePicker
+                        value={statsDateRange}
+                        onChange={handleStatsDateRangeChange}
+                        format="YYYY-MM-DD"
+                        allowClear={false}
+                        className="bg-[#1a2632] border-[#233648] h-10 rounded-xl"
+                    />
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-slate-400 text-sm">查询日期范围：</span>
-                  <DatePicker.RangePicker
-                    value={statsDateRange}
-                    onChange={handleStatsDateRangeChange}
-                    format="YYYY-MM-DD"
-                    allowClear={false}
-                    className="w-64"
-                  />
-                </div>
-              </div>
             
-            {statsLoading ? (
-              <div className="text-center py-8 text-slate-400">加载中...</div>
-            ) : modelStats.length === 0 ? (
-              <div className="text-center py-8 text-slate-400">暂无统计数据</div>
-            ) : (
-              <ConfigProvider
-                theme={{
-                  algorithm: theme.darkAlgorithm,
-                  components: {
-                    Table: {
-                      headerBg: 'transparent',
-                      headerColor: '#94a3b8',
-                      headerSplitColor: 'transparent',
-                      colorBgContainer: 'transparent',
-                      borderColor: '#233648',
-                      rowHoverBg: 'rgba(255, 255, 255, 0.02)',
-                    }
-                  }
-                }}
-              >
-                <Table
-                  columns={[
-                    {
-                      title: '模型',
-                      dataIndex: 'model',
-                      key: 'model',
-                      render: (text: string) => (
-                        <Text className="text-white font-medium">{text}</Text>
-                      ),
-                    },
-                    {
-                      title: '厂商',
-                      dataIndex: 'provider_name',
-                      key: 'provider_name',
-                      render: (text: string) => (
-                        <Text className="text-slate-400">{text}</Text>
-                      ),
-                    },
-                    {
-                      title: '请求次数',
-                      dataIndex: 'request_count',
-                      key: 'request_count',
-                      align: 'right' as const,
-                      render: (text: number) => (
-                        <Text className="text-slate-300">{text?.toLocaleString() || 0}</Text>
-                      ),
-                    },
-                    {
-                      title: '输入 Tokens',
-                      dataIndex: 'prompt_tokens',
-                      key: 'prompt_tokens',
-                      align: 'right' as const,
-                      render: (text: number) => (
-                        <Text className="text-blue-400 font-mono">{text?.toLocaleString() || 0}</Text>
-                      ),
-                    },
-                    {
-                      title: '输出 Tokens',
-                      dataIndex: 'completion_tokens',
-                      key: 'completion_tokens',
-                      align: 'right' as const,
-                      render: (text: number) => (
-                        <Text className="text-green-400 font-mono">{text?.toLocaleString() || 0}</Text>
-                      ),
-                    },
-                    {
-                      title: '总 Tokens',
-                      dataIndex: 'total_tokens',
-                      key: 'total_tokens',
-                      align: 'right' as const,
-                      render: (text: number) => (
-                        <Text className="text-primary font-mono font-semibold">{text?.toLocaleString() || 0}</Text>
-                      ),
-                    },
-                    {
-                      title: '成功率',
-                      key: 'success_rate',
-                      align: 'right' as const,
-                      render: (_: any, record: AppUsageStatsByModel) => {
-                        const rate = record.request_count > 0 
-                          ? ((record.success_count / record.request_count) * 100).toFixed(1)
-                          : '0.0';
-                        return (
-                          <Text className={parseFloat(rate) >= 95 ? 'text-green-400' : 'text-yellow-400'}>
-                            {rate}%
-                          </Text>
-                        );
-                      },
-                    },
-                  ]}
-                  dataSource={modelStats}
-                  rowKey="model"
-                  pagination={false}
-                  size="small"
-                />
-              </ConfigProvider>
-            )}
+                {statsLoading ? (
+                    <div className="text-center py-20 flex flex-col items-center gap-3">
+                        <SyncOutlined spin className="text-4xl text-indigo-500" />
+                        <span className="text-slate-500 font-medium">深度解析数据中...</span>
+                    </div>
+                ) : modelStats.length === 0 ? (
+                    <div className="text-center py-20 bg-[#111a22] rounded-3xl border border-dashed border-[#233648] flex flex-col items-center gap-3">
+                        <div className="text-4xl">📊</div>
+                        <span className="text-slate-500">该时间范围内暂无任何调用流水记录</span>
+                    </div>
+                ) : (
+                    <div className="bg-[#111a22] rounded-2xl border border-[#233648] overflow-hidden">
+                        <Table
+                            columns={[
+                                {
+                                    title: '模型服务',
+                                    dataIndex: 'model',
+                                    key: 'model',
+                                    render: (text: string) => (
+                                        <div className="flex flex-col">
+                                            <Text className="text-white font-bold">{text}</Text>
+                                        </div>
+                                    ),
+                                },
+                                {
+                                    title: '接入厂商',
+                                    dataIndex: 'provider_name',
+                                    key: 'provider_name',
+                                    render: (text: string) => <Tag className="bg-indigo-500/10 text-indigo-400 border-0 text-[10px] uppercase font-bold">{text}</Tag>,
+                                },
+                                {
+                                    title: '调用频次',
+                                    dataIndex: 'request_count',
+                                    key: 'request_count',
+                                    align: 'right' as const,
+                                    render: (text: number) => <span className="text-slate-200 font-mono">{text?.toLocaleString() || 0} 次</span>,
+                                },
+                                {
+                                    title: '输入 Tokens',
+                                    dataIndex: 'prompt_tokens',
+                                    key: 'prompt_tokens',
+                                    align: 'right' as const,
+                                    render: (text: number) => <span className="text-blue-400 font-mono">{text?.toLocaleString() || 0}</span>,
+                                },
+                                {
+                                    title: '输出 Tokens',
+                                    dataIndex: 'completion_tokens',
+                                    key: 'completion_tokens',
+                                    align: 'right' as const,
+                                    render: (text: number) => <span className="text-emerald-400 font-mono">{text?.toLocaleString() || 0}</span>,
+                                },
+                                {
+                                    title: '消耗占比',
+                                    key: 'ratio',
+                                    align: 'center' as const,
+                                    render: (_: any, record: AppUsageStatsByModel) => {
+                                        const total = modelStats.reduce((sum, s) => sum + s.total_tokens, 0);
+                                        const percent = total > 0 ? Math.round((record.total_tokens / total) * 100) : 0;
+                                        return (
+                                            <div className="w-full flex items-center gap-2">
+                                                <div className="flex-1 h-1 bg-slate-800 rounded-full overflow-hidden">
+                                                    <div className="h-full bg-indigo-500" style={{ width: `${percent}%` }}></div>
+                                                </div>
+                                                <span className="text-[10px] font-bold text-slate-400 w-8">{percent}%</span>
+                                            </div>
+                                        );
+                                    }
+                                },
+                                {
+                                    title: '成功率',
+                                    key: 'success_rate',
+                                    align: 'right' as const,
+                                    render: (_: any, record: AppUsageStatsByModel) => {
+                                        const rate = record.request_count > 0 
+                                            ? ((record.success_count / record.request_count) * 100).toFixed(1)
+                                            : '0.0';
+                                        return (
+                                            <Badge status={parseFloat(rate) >= 95 ? "success" : "warning"} text={<span className={parseFloat(rate) >= 95 ? 'text-emerald-400 font-bold' : 'text-amber-400 font-bold'}>{rate}%</span>} />
+                                        );
+                                    },
+                                },
+                            ]}
+                            dataSource={modelStats}
+                            rowKey="model"
+                            pagination={false}
+                            size="middle"
+                            className="custom-table-modern"
+                        />
+                    </div>
+                )}
             </div>
-          </Modal>
-        </ConfigProvider>
+        </Modal>
       </div>
-  
+    </ConfigProvider>
   );
 };
-
-// Custom icons to fix potential missing icons
-const CustomCloseOutlined = ({ className }: { className?: string }) => (
-    <span role="img" aria-label="close" className={`anticon anticon-close ${className}`} onClick={() => {}}>
-        <svg viewBox="64 64 896 896" focusable="false" width="1em" height="1em" fill="currentColor" aria-hidden="true"><path d="M563.8 512l262.5-312.9c4.4-5.2.7-13.1-6.1-13.1h-79.8c-4.7 0-9.2 2.1-12.3 5.7L511.6 449.8 295.1 191.7c-3-3.6-7.5-5.7-12.3-5.7H203c-6.8 0-10.5 7.9-6.1 13.1L459.4 512 196.9 824.9A7.95 7.95 0 00203 838h79.8c4.7 0 9.2-2.1 12.3-5.7l216.5-258.1 216.5 258.1c3 3.6 7.5 5.7 12.3 5.7h79.8c6.8 0 10.5-7.9 6.1-13.1L563.8 512z"></path></svg>
-    </span>
-);
 
 export default AppsAndTokens;
