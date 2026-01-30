@@ -12,6 +12,8 @@ const BASE_URL = window.API_BASE_URL || 'http://192.168.120.99:8088/api';
 
 export const API_BASE_URL = `${BASE_URL}/web`;
 export const OPENAI_BASE_URL = `${BASE_URL}/v1`;
+/** 用于聊天附件等静态资源链接的 origin（与 API 同源） */
+export const API_ORIGIN = (() => { try { return new URL(BASE_URL).origin; } catch { return typeof window !== 'undefined' ? window.location.origin : ''; } })();
 
 // 请求拦截：为需要登录的接口附加 X-Token（与 auth.ts 中 AUTH_TOKEN_KEY 一致）
 const AUTH_TOKEN_KEY = 'ai_gateway_token';
@@ -178,6 +180,38 @@ export const chatCompletionsStream = async (
     return response;
 };
 
+/**
+ * AI 助手专用流式对话：走 /api/web/chat/completions，使用用户 token + 租户聊天应用配置，不复用 v1 模型测试接口。
+ * 若无 session_id 可传空，后端会自动新建会话并在响应头返回 X-Chat-Session-Id。
+ * @param data 聊天请求（model、messages 等，图片和文件内容需在 messages 中）
+ * @param sessionId 当前会话 id，可选；无则后端自动新建
+ * @returns Response，可读流与 response.headers.get('X-Chat-Session-Id')
+ */
+export const chatCompletionsStreamAssistant = async (
+    data: ChatCompletionRequest,
+    sessionId?: string | null
+): Promise<Response> => {
+    const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+    };
+    const token = localStorage.getItem(AUTH_TOKEN_KEY);
+    if (token) {
+        headers['X-Token'] = token;
+    }
+    if (sessionId) {
+        headers['X-Chat-Session-Id'] = sessionId;
+    }
+    const response = await fetch(`${API_BASE_URL}/chat/completions`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+            ...data,
+            stream: true,
+        }),
+    });
+    return response;
+};
+
 export interface AppData {
     id: string;
     name: string;
@@ -199,10 +233,12 @@ export interface AppData {
     tenant_name?: string;
 }
 
-export const getApps = async (name?: string, status?: number | 'all') => {
+/** scope=tenant 时仅返回当前租户的应用（用于系统配置-聊天应用等） */
+export const getApps = async (name?: string, status?: number | 'all', options?: { scope?: 'tenant' }) => {
     const params: any = {};
     if (name) params.name = name;
     if (status !== undefined && status !== 'all') params.status = status;
+    if (options?.scope === 'tenant') params.scope = 'tenant';
     const response = await axios.get(`${API_BASE_URL}/app/list`, { params });
     return response.data;
 };
@@ -532,6 +568,8 @@ export type MenuData = {
     icon?: string;
     sort?: number;
     status?: number;
+    /** 是否在侧栏显示，0=不显示（仅权限）1=显示，仅 directory/menu 有效 */
+    show_in_menu?: number;
     children?: MenuData[];
 }
 
@@ -619,8 +657,35 @@ export interface UserMenuItem {
 }
 
 /** 获取当前用户菜单树（登录后根据角色显示） */
-export const getCurrentUserMenus = async (): Promise<{ code: number; msg?: string; data?: UserMenuItem[] }> => {
-    const response = await axios.get<{ code: number; msg?: string; data?: UserMenuItem[] }>(`${API_BASE_URL}/user/menus`);
+export const getCurrentUserMenus = async (): Promise<{ code: number; msg?: string; data?: { menus?: UserMenuItem[]; allowed_paths?: string[] } }> => {
+    const response = await axios.get<{ code: number; msg?: string; data?: { menus?: UserMenuItem[]; allowed_paths?: string[] } }>(`${API_BASE_URL}/user/menus`);
+    return response.data;
+};
+
+// 登录日志
+export interface LoginLogItem {
+    id: number;
+    user_id: string;
+    login_admin: string;
+    user_nick: string;
+    log_content: string;
+    last_login_ip: string;
+    browser?: string;
+    last_login_time: string;
+    status: number; // 0 成功 1 失败
+    tenant_name?: string; // 租户名称
+}
+
+export const getLoginLogList = async (params: {
+    keyword?: string;
+    status?: number;
+    page?: number;
+    pageSize?: number;
+}) => {
+    const response = await axios.get<{ code: number; data?: { list: LoginLogItem[]; total: number }; msg?: string }>(
+        `${API_BASE_URL}/login_log/list`,
+        { params }
+    );
     return response.data;
 };
 
@@ -683,5 +748,80 @@ export const getSysConfig = async () => {
 
 export const updateSysConfig = async (data: { logo?: string; name?: string }) => {
     const response = await axios.post(`${API_BASE_URL}/config/update`, data);
+    return response.data;
+};
+
+// AI 聊天应用配置（独立接口与表，与站点配置分离）
+export const getChatAppConfig = async () => {
+    const response = await axios.get(`${API_BASE_URL}/chat_app_config/get`);
+    return response.data;
+};
+
+export const updateChatAppConfig = async (data: { app_ids: string[] }) => {
+    const response = await axios.post(`${API_BASE_URL}/chat_app_config/update`, data);
+    return response.data;
+};
+
+// Chat API
+export interface ChatSession {
+    id: string;
+    title: string;
+    app_id?: string;
+    updated_time?: string;
+}
+
+export interface ChatMessageItem {
+    id: string;
+    session_id: string;
+    role: 'user' | 'assistant' | 'system';
+    content: string;
+    thinking?: string;
+    created_time?: string;
+}
+
+export const createChatSession = async (title: string, appId?: string) => {
+    const response = await axios.post(`${API_BASE_URL}/chat/session`, { title, app_id: appId });
+    return response.data;
+};
+
+export const deleteChatSession = async (id: string) => {
+    const response = await axios.delete(`${API_BASE_URL}/chat/session`, { data: { id } }); // DELETE with body needs 'data'
+    return response.data;
+};
+
+export const getChatHistory = async (page: number = 1, pageSize: number = 20) => {
+    const response = await axios.get(`${API_BASE_URL}/chat/history`, { params: { page, page_size: pageSize } });
+    return response.data;
+};
+
+export const getChatMessages = async (sessionId: string) => {
+    const response = await axios.get(`${API_BASE_URL}/chat/messages`, { params: { session_id: sessionId } });
+    return response.data;
+};
+
+export const saveChatMessage = async (data: { session_id: string; role: string; content: string; thinking?: string; meta?: string }) => {
+    const response = await axios.post(`${API_BASE_URL}/chat/message`, data);
+    return response.data;
+};
+
+export const getChatModels = async () => {
+    const response = await axios.get(`${API_BASE_URL}/chat/models`);
+    return response.data;
+};
+
+/** 聊天上传：图片或文件(txt/pdf/word)，文件会解析后返回 content 供上下文 */
+export interface ChatFileItem {
+    url: string;
+    file_name: string;
+    file_type: string;
+    content?: string;
+}
+export const uploadChatFile = async (files: File | File[]): Promise<{ code: number; msg?: string; data?: ChatFileItem[] }> => {
+    const formData = new FormData();
+    const list = Array.isArray(files) ? files : [files];
+    list.forEach(f => formData.append('files', f));
+    const response = await axios.post(`${API_BASE_URL}/chat/upload`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+    });
     return response.data;
 };

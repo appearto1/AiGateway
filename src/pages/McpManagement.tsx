@@ -697,14 +697,16 @@ const McpManagement: React.FC = () => {
                             {server.status.toUpperCase()}
                           </span>
                         </div>
-                        <div className="flex items-center gap-2 text-xs text-slate-500 font-mono">
-                          <span className="bg-[#111a22] px-1.5 py-0.5 rounded text-[10px] uppercase text-blue-400/80 font-bold tracking-wider">{server.type}</span>
+                        <div className="flex flex-col gap-1 text-xs text-slate-500 font-mono">
+                          <div className="flex items-center gap-2">
+                            <span className="bg-[#111a22] px-1.5 py-0.5 rounded text-[10px] uppercase text-blue-400/80 font-bold tracking-wider">{server.type}</span>
+                            {server.version && <span className="opacity-60">v{server.version}</span>}
+                          </div>
                           {server.tenant_name && (
-                            <span className="bg-purple-500/10 text-purple-400 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                            <span className="bg-purple-500/10 text-purple-400 px-1.5 py-0.5 rounded text-[10px] font-bold inline-block w-fit">
                               {server.tenant_name}
                             </span>
                           )}
-                          {server.version && <span className="opacity-60">v{server.version}</span>}
                         </div>
                       </div>
                     </div>

@@ -13,6 +13,9 @@ import RoleManagement from './pages/RoleManagement';
 import OrgManagement from './pages/OrgManagement';
 import UserManagement from './pages/UserManagement';
 import MenuManagement from './pages/MenuManagement';
+import LoginLogs from './pages/LoginLogs';
+import SystemConfig from './pages/SystemConfig';
+import ChatPage from './pages/ChatPage';
 import { Empty } from 'antd';
 import { getToken } from './services/auth';
 import McpManagement from './pages/McpManagement';
@@ -43,9 +46,13 @@ function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
-        <Route path="/" element={<RequireAuth><MainLayout /></RequireAuth>}>
+        <Route path="/playground" element={<Navigate to="/admin/playground" replace />} />
+        {/* ChatPage as Home */}
+        <Route path="/" element={<RequireAuth><ChatPage /></RequireAuth>} />
+        {/* Admin/Management Routes */}
+        <Route path="/admin" element={<RequireAuth><MainLayout /></RequireAuth>}>
           <Route index element={<Dashboard />} />
-          <Route path="dashboard" element={<Navigate to="/" replace />} />
+          <Route path="dashboard" element={<Navigate to="/admin" replace />} />
           <Route path="models" element={<ModelProviders />} />
           <Route path="apps" element={<AppsAndTokens />} />
           <Route path="playground" element={<ModelPlayground />} />
@@ -56,8 +63,10 @@ function App() {
           <Route path="roles" element={<RoleManagement />} />
           <Route path="menus" element={<MenuManagement />} />
           <Route path="settings/org" element={<OrgManagement />} />
-          <Route path="settings/department" element={<Navigate to="/settings/org" replace />} />
+          <Route path="settings/department" element={<Navigate to="/admin/settings/org" replace />} />
           <Route path="settings/users" element={<UserManagement />} />
+          <Route path="settings/login-logs" element={<LoginLogs />} />
+          <Route path="settings/config" element={<SystemConfig />} />
           <Route path="*" element={<PlaceholderPage title="404 Not Found" />} />
         </Route>
       </Routes>

@@ -403,7 +403,7 @@ const ModelProviders: React.FC = () => {
             <Button 
                 icon={<CodeOutlined />} 
                 className="bg-[#1a2632] border-[#334155] text-slate-300 hover:text-white hover:border-primary"
-                onClick={() => navigate('/playground')}
+                onClick={() => navigate('/admin/playground')}
             >
                 模型测试
             </Button>

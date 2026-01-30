@@ -59,3 +59,19 @@
 .dark-confirm-modal .ant-modal-confirm-content {
   color: #8b949e !important;
 }
+
+/* 强制 Mermaid 流程图文字不换行，避免节点因文字过多而被撑高 */
+.nodeLabel, .label {
+  white-space: nowrap !important;
+}
+
+/* Mermaid 连线上的文字（是/否）：去除白色背景，改为深色背景，遮挡连线 */
+.edgeLabel rect {
+  fill: #1a2632 !important; /* 与对话气泡背景一致 */
+  opacity: 1 !important;
+}
+/* 必须将文字设为白色，否则在深色背景下不可见 */
+.edgeLabel span, .edgeLabel div, .edgeLabel text {
+  color: #000000 !important;
+  fill: #000000 !important;
+}

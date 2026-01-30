@@ -28,6 +28,8 @@ import {
   SafetyCertificateOutlined,
   ClusterOutlined,
   RocketOutlined,
+  HistoryOutlined,
+  SettingOutlined,
 } from '@ant-design/icons';
 
 const { Sider } = Layout;
@@ -45,6 +47,8 @@ const ICON_MAP: Record<string, React.ReactNode> = {
   SafetyCertificateOutlined: <SafetyCertificateOutlined />,
   ClusterOutlined: <ClusterOutlined />,
   RocketOutlined: <RocketOutlined />,
+  HistoryOutlined: <HistoryOutlined />,
+  SettingOutlined: <SettingOutlined />,
 };
 
 function getIcon(iconName?: string): React.ReactNode {
@@ -82,13 +86,23 @@ function buildMenuItemsFromUserMenus(items: UserMenuItem[] | undefined): MenuIte
 
 /** 根据 pathname 计算当前选中的 menu key（取最长匹配的 path） */
 function getSelectedKeyFromPath(pathname: string, items: UserMenuItem[] | undefined): string {
-  if (!items?.length) return pathname || '/';
+  if (!items?.length) return pathname === '/admin' ? '/' : pathname.replace(/^\/admin/, '') || '/';
+  
+  // 移除 /admin 前缀以匹配 userMenus 中的 path
+  let norm = pathname;
+  if (pathname === '/admin' || pathname === '/admin/') {
+    norm = '/';
+  } else if (pathname.startsWith('/admin/')) {
+    norm = pathname.substring(6);
+  }
+  norm = norm === '/' ? '/' : norm.replace(/\/$/, '');
+
   let best = '';
   function walk(nodes: UserMenuItem[]) {
     for (const n of nodes) {
       if (n.type === 'menu' && n.path) {
         const p = n.path === '/' ? '/' : n.path.replace(/\/$/, '');
-        const norm = pathname === '/' ? '/' : pathname.replace(/\/$/, '');
+        // 匹配原始 path (backend path)
         if (norm === p || (p !== '/' && norm.startsWith(p + '/'))) {
           if (p.length > best.length) best = p;
         }
@@ -97,7 +111,9 @@ function getSelectedKeyFromPath(pathname: string, items: UserMenuItem[] | undefi
     }
   }
   walk(items);
-  return best || pathname || '/';
+  // 如果没找到匹配，且当前是 /admin，默认返回 / (仪表盘)
+  if (!best && (pathname === '/admin' || pathname === '/admin/')) return '/';
+  return best || norm || '/';
 }
 
 interface SidebarProps {
@@ -131,7 +147,9 @@ const Sidebar: React.FC<SidebarProps> = ({ userMenus }) => {
 
   const handleMenuClick = ({ key }: { key: string }) => {
     if (key.startsWith('/')) {
-      navigate(key === '/' ? '/' : key);
+        // 如果是根路径 /，跳转到 /admin；其他路径如 /models 跳转到 /admin/models
+        const target = key === '/' ? '/admin' : `/admin${key}`;
+        navigate(target);
     }
   };
 
@@ -153,7 +171,7 @@ const Sidebar: React.FC<SidebarProps> = ({ userMenus }) => {
         <div className="p-6 pb-2">
           <div
             className="flex items-center gap-3 mb-8 cursor-pointer"
-            onClick={() => navigate('/')}
+            onClick={() => navigate('/admin')}
           >
             <div className="size-10 rounded-lg bg-gradient-to-br from-primary to-blue-600 flex items-center justify-center shrink-0 shadow-lg shadow-blue-900/20 text-white overflow-hidden">
               {sysConfig.site_logo ? (

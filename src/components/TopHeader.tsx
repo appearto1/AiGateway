@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Layout, Input, Button, Badge, Avatar, Typography, Modal, Form, message, Upload } from 'antd';
-import { SearchOutlined, BellOutlined, SettingOutlined, LogoutOutlined, KeyOutlined, LockOutlined, GlobalOutlined, UploadOutlined } from '@ant-design/icons';
+import { Layout, Input, Button, Badge, Avatar, Typography, Modal, Form, message, Upload, Select } from 'antd';
+import { SearchOutlined, BellOutlined, SettingOutlined, LogoutOutlined, KeyOutlined, LockOutlined, GlobalOutlined, UploadOutlined, AppstoreOutlined, RobotOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import avatarImg from '../assets/avatar.webp';
 import { removeToken, getStoredUser, changePassword } from '../services/auth';
@@ -37,6 +37,25 @@ const TopHeader: React.FC = () => {
     }
   };
 
+  const fetchApps = async () => {
+    try {
+      const res = await getApps(undefined, 'all');
+      if (res.code === 200 && res.data && Array.isArray(res.data)) {
+        setAvailableApps(res.data.map((app: any) => ({ label: app.name, value: app.id })));
+      }
+    } catch (error) {
+      console.error('Failed to fetch apps:', error);
+    }
+  };
+
+  const handleOpenConfigModal = () => {
+    configForm.setFieldsValue({
+        site_name: sysConfig.site_name,
+        site_logo: sysConfig.site_logo
+    });
+    setIsConfigModalOpen(true);
+  };
+
   const handleLogout = () => {
     removeToken();
     navigate('/login', { replace: true });
@@ -61,7 +80,7 @@ const TopHeader: React.FC = () => {
     }
   };
 
-  const handleUpdateConfig = async (values: any) => {
+    const handleUpdateConfig = async (values: any) => {
     setConfigLoading(true);
     try {
       const res = await updateSysConfig({
@@ -101,6 +120,17 @@ const TopHeader: React.FC = () => {
         />
         
         <div className="h-6 w-px bg-[#334155] mx-1"></div>
+
+        <Button
+          type="text"
+          icon={<RobotOutlined style={{ fontSize: '18px' }} />}
+          className="flex items-center justify-center gap-1.5 text-slate-400 hover:text-white hover:bg-[#233648] px-3"
+          onClick={() => navigate('/')}
+        >
+          AI助手
+        </Button>
+
+        <div className="h-6 w-px bg-[#334155] mx-1"></div>
         
         {user?.has_system_role && (
           <>
@@ -118,13 +148,7 @@ const TopHeader: React.FC = () => {
                 type="text" 
                 icon={<SettingOutlined style={{ fontSize: '20px' }} className="text-slate-400 hover:text-white" />} 
                 className="flex items-center justify-center size-9 hover:bg-[#233648]"
-                onClick={() => {
-                  configForm.setFieldsValue({
-                    site_name: sysConfig.site_name,
-                    site_logo: sysConfig.site_logo
-                  });
-                  setIsConfigModalOpen(true);
-                }}
+                onClick={handleOpenConfigModal}
             />
           </>
         )}
@@ -368,6 +392,28 @@ const TopHeader: React.FC = () => {
         }
         .gateway-dark-input .ant-input-password-icon:hover {
           color: white !important;
+        }
+        .gateway-dark-select .ant-select-selector {
+          background-color: #1a2632 !important;
+          border-color: #2d3d4d !important;
+          color: white !important;
+        }
+        .gateway-dark-select:hover .ant-select-selector {
+          border-color: #3b82f6 !important;
+        }
+        .gateway-dark-dropdown {
+          background-color: #1a2632 !important;
+          border: 1px solid #2d3d4d;
+        }
+        .gateway-dark-dropdown .ant-select-item {
+          color: #94a3b8;
+        }
+        .gateway-dark-dropdown .ant-select-item-option-selected {
+          background-color: rgba(59, 130, 246, 0.2) !important;
+          color: white !important;
+        }
+        .gateway-dark-dropdown .ant-select-item-option-active {
+          background-color: rgba(255, 255, 255, 0.05) !important;
         }
         .dark-modal .ant-btn-default {
           background-color: #1a2632;

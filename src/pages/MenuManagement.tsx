@@ -220,6 +220,16 @@ const MenuManagement: React.FC = () => {
       },
     },
     {
+      title: '侧栏显示',
+      dataIndex: 'show_in_menu',
+      key: 'show_in_menu',
+      width: 90,
+      render: (val: number | undefined, record: MenuData) => {
+        if (record.type === 'button') return <span className="text-slate-500">-</span>;
+        return val === 0 ? <Tag color="default">不显示</Tag> : <Tag color="green">显示</Tag>;
+      },
+    },
+    {
       title: '组件路径',
       dataIndex: 'path',
       key: 'path',
@@ -395,7 +405,7 @@ const MenuManagement: React.FC = () => {
         <Form
             form={form}
             layout="vertical"
-            initialValues={{ type: 'menu', api_method: 'GET', parent_id: '' }}
+            initialValues={{ type: 'menu', api_method: 'GET', parent_id: '', show_in_menu: 1 }}
         >
             <Form.Item name="parent_id" hidden>
                 <Input />
@@ -428,13 +438,25 @@ const MenuManagement: React.FC = () => {
                 {({ getFieldValue }) => {
                     const type = getFieldValue('type');
                     return type !== 'button' ? (
-                        <Form.Item
-                            name="path"
-                            label="组件路径 / 路由地址"
-                            extra="目录通常填 Layout，菜单填组件路径如 /system/user/index"
-                        >
-                            <Input placeholder="Layout 或 /views/path/to/component" />
-                        </Form.Item>
+                        <>
+                            <Form.Item
+                                name="path"
+                                label="组件路径 / 路由地址"
+                                extra="目录通常填 Layout，菜单填组件路径如 /system/user/index"
+                            >
+                                <Input placeholder="Layout 或 /views/path/to/component" />
+                            </Form.Item>
+                            <Form.Item
+                                name="show_in_menu"
+                                label="是否在侧栏显示"
+                                extra="不显示时仍参与权限控制（如模型体验）"
+                            >
+                                <Select>
+                                    <Option value={1}>显示</Option>
+                                    <Option value={0}>不显示（仅权限）</Option>
+                                </Select>
+                            </Form.Item>
+                        </>
                     ) : null;
                 }}
             </Form.Item>

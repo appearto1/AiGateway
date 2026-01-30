@@ -21,8 +21,13 @@ import { getToken } from '../services/auth';
 
 const { Content } = Layout;
 
-/** 从菜单树收集所有可访问的前端 path（type=menu 的 path） */
-function collectMenuPaths(items: UserMenuItem[] | undefined): string[] {
+/** 从菜单树收集所有可访问的前端 path（type=menu 的 path），或使用后端返回的 allowed_paths */
+function collectMenuPaths(items: UserMenuItem[] | undefined, allowedPaths?: string[]): string[] {
+  // 优先使用后端返回的 allowed_paths（包含 ShowInMenu=0 的菜单，如模型体验）
+  if (allowedPaths && allowedPaths.length > 0) {
+    return allowedPaths;
+  }
+  // 降级：从菜单树收集（仅用于兼容旧版本或 fallback）
   if (!items?.length) return [];
   const paths: string[] = [];
   function walk(nodes: UserMenuItem[]) {
@@ -38,7 +43,16 @@ function collectMenuPaths(items: UserMenuItem[] | undefined): string[] {
 /** 当前 pathname 是否在允许的菜单路径内（精确或子路径） */
 function isPathAllowed(pathname: string, allowedPaths: string[]): boolean {
   if (allowedPaths.length === 0) return true;
-  const normalized = pathname === '/' ? '/' : pathname.replace(/\/$/, '') || '/';
+  // 移除 /admin 前缀以匹配后端返回的菜单路径
+  let normalized = pathname;
+  if (pathname === '/admin' || pathname === '/admin/') {
+    normalized = '/';
+  } else if (pathname.startsWith('/admin/')) {
+    normalized = pathname.substring(6);
+  }
+  
+  normalized = normalized === '/' ? '/' : normalized.replace(/\/$/, '') || '/';
+  
   for (const p of allowedPaths) {
     const base = p === '/' ? '/' : p.replace(/\/$/, '') || '/';
     if (normalized === base) return true;
@@ -51,25 +65,44 @@ const MainLayout: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const [userMenus, setUserMenus] = useState<UserMenuItem[] | null>(null);
+  const [allowedPathsFromApi, setAllowedPathsFromApi] = useState<string[] | undefined>(undefined);
 
   useEffect(() => {
     if (!getToken()) return;
     getCurrentUserMenus()
       .then((res) => {
-        if (res.code === 200 && Array.isArray(res.data)) setUserMenus(res.data);
-        else setUserMenus([]);
+        if (res.code === 200 && res.data) {
+          if (Array.isArray(res.data)) {
+            // 兼容旧版本：直接返回数组
+            setUserMenus(res.data);
+            setAllowedPathsFromApi(undefined);
+          } else {
+            // 新版本：包含 menus 和 allowed_paths
+            setUserMenus(res.data.menus || []);
+            setAllowedPathsFromApi(res.data.allowed_paths);
+          }
+        } else {
+          setUserMenus([]);
+          setAllowedPathsFromApi(undefined);
+        }
       })
-      .catch(() => setUserMenus([]));
+      .catch(() => {
+        setUserMenus([]);
+        setAllowedPathsFromApi(undefined);
+      });
   }, []);
 
-  const allowedPaths = useMemo(() => collectMenuPaths(userMenus ?? undefined), [userMenus]);
+  const allowedPaths = useMemo(() => collectMenuPaths(userMenus ?? undefined, allowedPathsFromApi), [userMenus, allowedPathsFromApi]);
 
   useEffect(() => {
     if (userMenus === null) return;
     const pathname = location.pathname;
+    // 如果当前路径不在允许列表中，且不是 /admin (仪表盘) 且不是 /chat
     if (allowedPaths.length > 0 && !isPathAllowed(pathname, allowedPaths)) {
       const first = allowedPaths.find((p) => p && p !== 'Layout');
-      navigate(first === '/' || !first ? '/' : first, { replace: true });
+      // 构造跳转目标：如果后端返回 /，对应前端 /admin；其他路径如 /models 对应 /admin/models
+      const target = first === '/' ? '/admin' : `/admin${first}`;
+      navigate(target, { replace: true });
     }
   }, [userMenus, location.pathname, allowedPaths, navigate]);
 
