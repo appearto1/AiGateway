@@ -20,7 +20,8 @@ import {
   PlusOutlined, 
   MessageOutlined, 
   UserOutlined, 
-  SendOutlined, 
+  SendOutlined,
+  StopOutlined,
   LoadingOutlined, 
   DeleteOutlined, 
   MoreOutlined, 
@@ -306,6 +307,7 @@ const ChatPage: React.FC = () => {
     const imageInputRef = useRef<HTMLInputElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const autoCreateSessionDoneRef = useRef(false); // 防止 StrictMode 下 effect 执行两次导致创建 2 条会话
+    const abortControllerRef = useRef<AbortController | null>(null);
 
     const svgToPngArrayBuffer = (svg: string): Promise<{ buffer: ArrayBuffer; width: number; height: number }> => {
         return new Promise((resolve, reject) => {
@@ -862,9 +864,16 @@ const ChatPage: React.FC = () => {
         if (fileInputRef.current) fileInputRef.current.value = '';
     };
 
+    const handleStopMessage = () => {
+        abortControllerRef.current?.abort();
+    };
+
     const handleSendMessage = async () => {
         const hasInput = input.trim() || uploadedImages.length > 0 || uploadedFiles.length > 0;
         if (!hasInput || isLoading) return;
+
+        abortControllerRef.current = new AbortController();
+        const signal = abortControllerRef.current.signal;
 
         // 无对话 id 时先建一个本地临时会话，后端会在首次请求时自动新建并返回 X-Chat-Session-Id
         let sessionIdToUse = currentSessionId;
@@ -934,7 +943,7 @@ const ChatPage: React.FC = () => {
                 };
             });
 
-            // AI 助手专用接口：用户 token + 租户聊天应用配置，后端无 session 时自动新建
+            // AI 助手专用接口：用户 token + 租户聊天应用配置，后端无 session 时自动新建；支持 signal 取消（停止）
             const effectiveSessionId = currentSessionId?.startsWith?.('pending-') ? undefined : currentSessionId;
             const response = await chatCompletionsStreamAssistant(
                 {
@@ -943,7 +952,8 @@ const ChatPage: React.FC = () => {
                     temperature: 0.7,
                     stream: true
                 } as ChatCompletionRequest,
-                effectiveSessionId
+                effectiveSessionId,
+                signal
             );
 
             // 后端新建会话时返回 X-Chat-Session-Id，替换本地临时 id
@@ -996,7 +1006,14 @@ const ChatPage: React.FC = () => {
 
             if (reader) {
                 while (true) {
-                    const { done, value } = await reader.read();
+                    let result: ReadableStreamReadResult<Uint8Array>;
+                    try {
+                        result = await reader.read();
+                    } catch (readErr: any) {
+                        if (readErr?.name === 'AbortError') break;
+                        throw readErr;
+                    }
+                    const { done, value } = result;
                     if (done) break;
 
                     const chunk = decoder.decode(value, { stream: true });
@@ -1151,11 +1168,16 @@ const ChatPage: React.FC = () => {
                 loadHistory(); // Refresh list to get new title
             }
 
-        } catch (e) {
+        } catch (e: any) {
+            if (e?.name === 'AbortError') {
+                // 用户点击停止，不提示错误
+                return;
+            }
             console.error(e);
             message.error('发送失败');
         } finally {
             setIsLoading(false);
+            abortControllerRef.current = null;
         }
     };
 
@@ -1663,10 +1685,10 @@ const ChatPage: React.FC = () => {
                             <Button 
                                 type="primary" 
                                 size="small"
-                                icon={isLoading ? <LoadingOutlined /> : <SendOutlined />}
-                                onClick={handleSendMessage}
-                                disabled={isLoading || (!input.trim() && uploadedImages.length === 0 && uploadedFiles.length === 0)}
-                                className="bg-primary hover:bg-blue-600"
+                                icon={isLoading ? <StopOutlined className="animate-spin" /> : <SendOutlined />}
+                                onClick={isLoading ? handleStopMessage : handleSendMessage}
+                                disabled={!isLoading && (!input.trim() && uploadedImages.length === 0 && uploadedFiles.length === 0)}
+                                className={isLoading ? 'bg-red-600 hover:bg-red-700' : 'bg-primary hover:bg-blue-600'}
                             />
                         </div>
                     </div>
@@ -1681,9 +1703,9 @@ const ChatPage: React.FC = () => {
       {/* 修改密码弹窗 */}
       <Modal
         title={
-          <div className="flex items-center gap-2">
-            <div className="size-8 rounded-lg bg-blue-500/10 flex items-center justify-center">
-              <KeyOutlined className="text-blue-500" />
+          <div className="flex items-center gap-3">
+            <div className="size-8 rounded-lg bg-primary/20 flex items-center justify-center shrink-0">
+              <LockOutlined className="text-primary text-lg" />
             </div>
             <span className="text-white font-semibold">安全设置 - 修改密码</span>
           </div>
@@ -1699,9 +1721,9 @@ const ChatPage: React.FC = () => {
         cancelText="取消"
         width={420}
         centered
-        className="dark-modal"
+        className="dark-modal password-modal"
         footer={(footer) => (
-          <div className="flex justify-end gap-3 mt-4 pt-4 border-t border-[#233648]">
+          <div className="flex justify-end gap-3 mt-6 pt-6 border-t border-[#233648]/50">
             {footer}
           </div>
         )}

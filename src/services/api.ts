@@ -185,11 +185,13 @@ export const chatCompletionsStream = async (
  * 若无 session_id 可传空，后端会自动新建会话并在响应头返回 X-Chat-Session-Id。
  * @param data 聊天请求（model、messages 等，图片和文件内容需在 messages 中）
  * @param sessionId 当前会话 id，可选；无则后端自动新建
+ * @param signal 可选，用于取消请求（点击停止时 abort）
  * @returns Response，可读流与 response.headers.get('X-Chat-Session-Id')
  */
 export const chatCompletionsStreamAssistant = async (
     data: ChatCompletionRequest,
-    sessionId?: string | null
+    sessionId?: string | null,
+    signal?: AbortSignal | null
 ): Promise<Response> => {
     const headers: Record<string, string> = {
         'Content-Type': 'application/json',
@@ -208,6 +210,7 @@ export const chatCompletionsStreamAssistant = async (
             ...data,
             stream: true,
         }),
+        signal: signal ?? undefined,
     });
     return response;
 };

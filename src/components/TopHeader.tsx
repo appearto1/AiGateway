@@ -200,7 +200,7 @@ const TopHeader: React.FC = () => {
         centered
         className="dark-modal"
         footer={(footer) => (
-          <div className="flex justify-end gap-3 mt-4 pt-4 border-t border-[#233648]">
+          <div className="flex justify-end gap-3 mt-6 pt-6 border-t border-[#233648]/50">
             {footer}
           </div>
         )}
@@ -345,105 +345,7 @@ const TopHeader: React.FC = () => {
       </Modal>
 
       <style>{`
-        .dark-modal .ant-modal-content {
-          background-color: #111a22;
-          border: 1px solid #233648;
-          box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.4);
-          border-radius: 12px;
-          padding: 24px;
-        }
-        .dark-modal .ant-modal-header {
-          background-color: transparent;
-          border-bottom: none;
-          margin-bottom: 20px;
-          padding: 0;
-        }
-        .dark-modal .ant-modal-title {
-          font-size: 18px;
-        }
-        .dark-modal .ant-modal-close {
-          color: #94a3b8;
-          top: 20px;
-          right: 20px;
-        }
-        .dark-modal .ant-modal-close:hover {
-          color: white;
-          background-color: rgba(255, 255, 255, 0.05);
-        }
-        .gateway-dark-input {
-          background-color: #1a2632 !important;
-          border-color: #2d3d4d !important;
-          color: white !important;
-          height: 40px;
-          border-radius: 8px;
-          transition: all 0.2s;
-        }
-        .gateway-dark-input:hover, .gateway-dark-input:focus, .gateway-dark-input-focused {
-          border-color: #3b82f6 !important;
-          box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1) !important;
-          background-color: #1a2632 !important;
-        }
-        .gateway-dark-input input {
-          background-color: transparent !important;
-          color: white !important;
-        }
-        .gateway-dark-input .ant-input-password-icon {
-          color: #64748b !important;
-        }
-        .gateway-dark-input .ant-input-password-icon:hover {
-          color: white !important;
-        }
-        .gateway-dark-select .ant-select-selector {
-          background-color: #1a2632 !important;
-          border-color: #2d3d4d !important;
-          color: white !important;
-        }
-        .gateway-dark-select:hover .ant-select-selector {
-          border-color: #3b82f6 !important;
-        }
-        .gateway-dark-dropdown {
-          background-color: #1a2632 !important;
-          border: 1px solid #2d3d4d;
-        }
-        .gateway-dark-dropdown .ant-select-item {
-          color: #94a3b8;
-        }
-        .gateway-dark-dropdown .ant-select-item-option-selected {
-          background-color: rgba(59, 130, 246, 0.2) !important;
-          color: white !important;
-        }
-        .gateway-dark-dropdown .ant-select-item-option-active {
-          background-color: rgba(255, 255, 255, 0.05) !important;
-        }
-        .dark-modal .ant-btn-default {
-          background-color: #1a2632;
-          border-color: #2d3d4d;
-          color: #94a3b8;
-          height: 38px;
-          padding: 0 20px;
-          border-radius: 8px;
-        }
-        .dark-modal .ant-btn-default:hover {
-          color: white !important;
-          border-color: #3b82f6 !important;
-          background-color: #1a2632 !important;
-        }
-        .dark-modal .ant-btn-primary {
-          background-color: #3b82f6;
-          height: 38px;
-          padding: 0 20px;
-          border-radius: 8px;
-          font-weight: 500;
-          box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.2);
-        }
-        .dark-modal .ant-btn-primary:hover {
-          background-color: #2563eb !important;
-          box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3) !important;
-        }
-        .dark-modal .ant-form-item-explain-error {
-          font-size: 12px;
-          margin-top: 4px;
-        }
+        /* Styles moved to global index.css */
       `}</style>
     </Header>
   );
