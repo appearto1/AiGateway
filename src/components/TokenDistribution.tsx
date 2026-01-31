@@ -8,12 +8,13 @@ interface TokenDistributionProps {
 
 const COLORS = ['bg-primary', 'bg-purple-500', 'bg-teal-500', 'bg-orange-500', 'bg-pink-500', 'bg-green-500'];
 
-const TokenDistribution: React.FC<TokenDistributionProps> = ({ data = [] }) => {
+const TokenDistribution: React.FC<TokenDistributionProps> = ({ data }) => {
+    const safeData = Array.isArray(data) ? data : [];
     // Calculate total tokens across all models
-    const totalTokens = data.reduce((sum, item) => sum + item.total_tokens, 0);
+    const totalTokens = safeData.reduce((sum, item) => sum + (item?.total_tokens ?? 0), 0);
 
     // Sort by tokens desc and take top 5
-    const topModels = [...data]
+    const topModels = [...safeData]
         .sort((a, b) => b.total_tokens - a.total_tokens)
         .slice(0, 5)
         .map((item, index) => ({
