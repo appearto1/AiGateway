@@ -68,14 +68,6 @@ AiGateway/
    ```
    启动后 API 与 Web 管理接口在 `http://<服务器>:<PORT>`（如 `http://localhost:80`）。
 
-### Linux
-
-- 若需 Linux 版本，可在项目后端源码目录使用：
-  ```bash
-  CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o aigserver .
-  ```
-- 同样将 `env.example` 复制为 `.env` 并配置后运行 `./aigserver`。
-
 ---
 
 ## 前端打包与部署
